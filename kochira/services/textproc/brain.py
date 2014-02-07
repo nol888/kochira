@@ -67,3 +67,7 @@ def reply_and_learn(client, target, origin, message):
 
     if message:
         storage.brain.learn(message)
+
+def reply(bot, message, *args, **kwargs):
+    return service.storage_for(bot).brain.reply(message, *args, **kwargs)
+

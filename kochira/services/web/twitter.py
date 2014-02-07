@@ -9,7 +9,7 @@ Configuration Options
 
 ``oauth``
   Dictionary containing the OAuth key, secret, token, and token secret.
-  e.g. ``{"key": "qwerty", "secret": "123456", "token": "nekot", "token_secret": "nekot_sekrit"}``
+  e.g. ``{"consumer_key": "qwerty", "consumer_secret": "123456", "token": "nekot", "token_secret": "nekot_sekrit"}``
 
 ``announce``
   List of announce channels, e.g.
@@ -35,8 +35,8 @@ Reply
 
 ::
 
-    $bot: reply to <ID> with <tweet>
-    !reply <ID>
+    $bot: reply to <ID> [with <tweet>]
+    !reply <ID> [tweet]
 
 **Requires permission:** tweet
 
@@ -46,11 +46,9 @@ attemps to search for a usable Brain service and uses it to generate a suitable 
 
 import time
 from threading import Thread
-from twitter import Twitter, TwitterStream, OAuth
+from twitter import Twitter, TwitterStream, TwitterHTTPError, OAuth
 from kochira.service import Service
-
-import logging
-logger = logging.getLogger(__name__)
+from kochira.auth import requires_permission
 
 service = Service(__name__, __doc__)
 
@@ -58,9 +56,8 @@ service = Service(__name__, __doc__)
 def make_twitter(bot):
     storage = service.storage_for(bot)
     config = service.config_for(bot)
-    o = config["oauth"]
 
-    storage.api = Twitter(auth=OAuth(o["token"], o["token_secret"], o["key"], o["secret"]))
+    storage.api = Twitter(auth=OAuth(**config["oauth"]))
     storage.active = True
     storage.stream = Thread(target=_follow_userstream, args=(bot,), daemon=True)
     storage.stream.start()
@@ -71,13 +68,49 @@ def kill_twitter(bot):
     storage.active = False
     storage.stream.join()
 
+@service.command(r"tweet (?P<message>.+)$", mention=True)
+@service.command(r"!tweet (?P<message>.+)$")
+@requires_permission("tweet")
+def tweet(client, target, origin, message):
+    service.storage_for(client.bot).api.statuses.update(status=message)
+
+@service.command(r"reply to (?P<id>[0-9]+)(?: with (?P<message>.+))?$", mention=True)
+@service.command(r"!reply (?P<id>[0-9]+)(?: (?P<message>.+))?$")
+@requires_permission("tweet")
+def reply(client, target, origin, id, message=None):
+    api = service.storage_for(client.bot).api
+    try:
+        tweet = api.statuses.show(id=id)
+    except TwitterHTTPError:
+        client.message(target, "{origin}: Tweet {id} does not exist!".format(
+            origin=origin,
+            id=id
+        ))
+        return
+
+    if message is None:
+        brain = _find_brain(client.bot)
+        if brain is None:
+            client.message(target, "{origin}: No tweet provided and no Brain could be found!".format(
+                origin=origin
+            ))
+            return
+
+        text = tweet["text"]
+        user = "@{} ".format(tweet["user"]["screen_name"])
+        message = user + brain.reply(client.bot, text, max_len=140-len(user))
+    else:
+        message = "@{} {}".format(tweet["user"]["screen_name"], message)
+
+    api.statuses.update(status=message, in_reply_to_status_id=id)
+
 def _follow_userstream(bot):
     o = service.config_for(bot)["oauth"]
-    stream = TwitterStream(auth=OAuth(o["token"], o["token_secret"], o["key"], o["secret"]), domain='userstream.twitter.com', block=False)
+    stream = TwitterStream(auth=OAuth(**o), domain="userstream.twitter.com", block=False)
 
     for msg in stream.user():
         if msg is not None:
-            logger.debug(str(msg))
+            service.logger.debug(str(msg))
 
             # Twitter signals start of stream with the "friends" message.
             if 'friends' in msg:
@@ -94,8 +127,23 @@ def _follow_userstream(bot):
             time.sleep(.5)
 
         if not service.storage_for(bot).active:
-            break
+            return
 
 def _announce(bot, text):
     for announce in service.config_for(bot)["announce"]:
-        bot.networks[announce["network"]].message(announce["channel"], text)
+        if announce["network"] in bot.networks:
+            bot.networks[announce["network"]].message(announce["channel"], text)
+
+def _find_brain(bot):
+    import importlib
+
+    if "kochira.services.textproc.brain" in bot.services:
+        return importlib.import_module("kochira.services.textproc.brain")
+
+    for name, _ in bot.services.items():
+        if 'brain' in name.lower():
+            service = importlib.import_module(name)
+            if callable(getattr(service, 'reply', None)):
+                return service
+
+    return None
