@@ -18,8 +18,8 @@ Find and Replace
     s/<pattern>/<replacement>/<flags>
     <who>: s/<pattern>/<replacement>/<flags>
 
-Find a regular expression pattern and replace it. Flags supported are `i` for
-case insensitive, `g` for global and `s` for dot-all.
+Find a regular expression pattern and replace it. Regular expressions are implicitly global.
+Flags supported are `i` for case insensitive, and `s` for dot-all.
 
 """
 
@@ -30,8 +30,8 @@ from kochira.service import Service
 service = Service(__name__, __doc__)
 
 
-@service.command(r"s(\W{1,2})(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[gis]*)")
-@service.command(r"(?P<who>.+)[,;:] s(\W{1,2})(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[gis]*)")
+@service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)")
+@service.command(r"(?P<who>.+)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)")
 def sed(client, target, origin, pattern, replacement, who=None, flags=None):
     if flags is None:
         flags = ""
@@ -57,7 +57,7 @@ def sed(client, target, origin, pattern, replacement, who=None, flags=None):
 
             if match is not None:
                 try:
-                    msg = expr.sub(replacement, message, count=0 if "g" in flags else 1)
+                    msg = expr.sub(replacement, message)
                 except:
                     client.message(target, "{origin}: Couldn't parse that pattern.".format(
                         origin=origin
