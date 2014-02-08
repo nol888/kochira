@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import functools
 import imp
 import importlib
 import heapq
@@ -67,12 +68,13 @@ class Bot:
 
         self.networks[network_name] = client
 
-        def handle_all_messages(fd, events):
-            while client._has_message():
-                client.handle_single()
+        def handle_next_message(fd=None, events=None):
+            if client._has_message():
+                client.poll_single()
+                self.io_loop.add_callback(handle_next_message)
 
         self.io_loop.add_handler(client.connection.socket.fileno(),
-                                 handle_all_messages,
+                                 handle_next_message,
                                  ioloop.IOLoop.READ)
 
         return client
@@ -112,6 +114,9 @@ class Bot:
     def _shutdown_service(self, service):
         service.run_shutdown(self)
         self.scheduler.unschedule_service(service)
+
+    def defer_from_thread(self, fn, *args, **kwargs):
+        self.io_loop.add_callback(functools.partial(fn, *args, **kwargs))
 
     def load_service(self, name, reload=False):
         """
