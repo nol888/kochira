@@ -59,6 +59,7 @@ def make_twitter(bot):
 
     storage.api = Twitter(auth=OAuth(**config["oauth"]))
     storage.active = True
+    storage.last = None
     storage.stream = Thread(target=_follow_userstream, args=(bot,), daemon=True)
     storage.stream.start()
 
@@ -74,11 +75,22 @@ def kill_twitter(bot):
 def tweet(client, target, origin, message):
     service.storage_for(client.bot).api.statuses.update(status=message)
 
-@service.command(r"reply to (?P<id>[0-9]+)(?: with (?P<message>.+))?$", mention=True)
-@service.command(r"!reply (?P<id>[0-9]+)(?: (?P<message>.+))?$")
+@service.command(r"reply to (?P<id>[0-9]+|last)(?: with (?P<message>.+))?$", mention=True)
+@service.command(r"!reply (?P<id>[0-9]+|last)(?: (?P<message>.+))?$")
 @requires_permission("tweet")
 def reply(client, target, origin, id, message=None):
-    api = service.storage_for(client.bot).api
+    storage = service.storage_for(client.bot)
+    api = storage.api
+
+    if id == "last":
+        if storage.last is None:
+            client.message(target, "{origin}: I haven't seen any tweets yet!".format(
+                origin=origin
+            ))
+            return
+
+        id = storage.last["id_str"]
+
     try:
         tweet = api.statuses.show(id=id)
     except TwitterHTTPError:
@@ -116,9 +128,11 @@ def _follow_userstream(bot):
             if 'friends' in msg:
                 _announce(bot, "\x02twitter:\x02 This channel is now streaming Twitter in real-time.")
             elif 'text' in msg and 'user' in msg:
+                service.storage_for(bot).last = msg
+
                 url_format = "(https://twitter.com/{0[user][screen_name]}/status/{0[id_str]})"
                 if 'retweeted_status' in msg:
-                    text = "\x02[@{0[user][screen_name]} RT {0[retweeted_status][user][screen_name]}]\x02 {0[retweeted_status][text]} " + url_format
+                    text = "\x02[@{0[user][screen_name]} RT @{0[retweeted_status][user][screen_name]}]\x02 {0[retweeted_status][text]} " + url_format
                 else:
                     text = "\x02[@{0[user][screen_name]}]\x02 {0[text]} " + url_format
 
