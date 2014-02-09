@@ -14,6 +14,7 @@ Commands
 None.
 """
 
+import threading
 from datetime import datetime
 
 from kochira.service import Service
@@ -35,7 +36,10 @@ def _get_file_handle(storage, network, channel):
         if not network_path.exists():
             network_path.mkdir(parents=True)
 
-        f = (network_path / (channel + ".log")).open("ab", buffering=0)
+        path = network_path / (channel + ".log")
+        f = path.open("ab")
+
+        service.logger.debug("Opened handle for: %s", path)
 
         storage.handles[k] = f
 
@@ -50,10 +54,14 @@ def log(client, channel, what):
     now = datetime.utcnow()
 
     storage = service.storage_for(client.bot)
-    _get_file_handle(storage, client.network, channel).write(("{now} {what}\n".format(
-        now=now.isoformat(),
-        what=what
-    )).encode("utf-8"))
+    f = _get_file_handle(storage, client.network, channel)
+
+    with storage.lock:
+        f.write(("{now} {what}\n".format(
+            now=now.isoformat(),
+            what=what
+        )).encode("utf-8"))
+        f.flush()
 
 
 def log_message(client, target, origin, message, format):
@@ -78,6 +86,14 @@ def log_global(client, origin, what):
         log(client, origin, what)
 
 
+def close_all_handles(storage):
+    with storage.lock:
+        for f in storage.handles.values():
+            f.close()
+        storage.handles = {}
+    service.logger.debug("Log handles closed")
+
+
 @service.setup
 def setup_logger(bot):
     config = service.config_for(bot)
@@ -85,14 +101,19 @@ def setup_logger(bot):
 
     storage.handles = {}
     storage.path = Path(config["log_dir"])
+    storage.lock = threading.Lock()
 
 
 @service.shutdown
 def shutdown_logger(bot):
     storage = service.storage_for(bot)
+    close_all_handles(storage)
 
-    for f in storage.handles.values():
-        f.close()
+
+@service.hook("sighup")
+def flush_log_handles(bot):
+    storage = service.storage_for(bot)
+    close_all_handles(storage)
 
 
 @service.hook("own_message", priority=10000)
@@ -135,7 +156,7 @@ def on_kick(client, channel, target, by, message=None):
 def on_mode_change(client, channel, modes, by):
     log(client, channel, "-!- {by} set modes: {modes}".format(
         by=by,
-        modes=modes))
+        modes=" ".join(modes)))
 
 
 @service.hook("channel_message", priority=10000)
@@ -188,9 +209,9 @@ def on_quit(client, origin, message=None):
                message=message or ""))
 
 
-@service.hook("ctcp", priority=10000)
-def on_ctcp_action(client, origin, target, what):
-    command, _, message = what.partition(" ")
+@service.hook("ctcp_action", priority=10000)
+def on_ctcp_action(client, origin, target, message):
+    if target == client.nickname:
+        target = origin
 
-    if command.lower() == "action":
-        log_message(client, target, origin, message, " * {sigil}{origin} {message}")
+    log_message(client, target, origin, message, " * {sigil}{origin} {message}")
