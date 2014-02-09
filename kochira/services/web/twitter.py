@@ -4,17 +4,6 @@ Twitter timeline follower.
 Broadcasts a Twitter user's timeline into IRC. Provides tweeting capabilities as well as
 Markov-chain text generation with a compatible Brain.
 
-Configuration Options
-=====================
-
-``oauth``
-  Dictionary containing the OAuth key, secret, token, and token secret.
-  e.g. ``{"consumer_key": "qwerty", "consumer_secret": "123456", "token": "nekot", "token_secret": "nekot_sekrit"}``
-
-``announce``
-  List of announce channels, e.g.
-  ``[{"network": "#freenode", "channel": "kochira"}]``.
-
 Commands
 ========
 
@@ -45,19 +34,38 @@ attemps to search for a usable Brain service and uses it to generate a suitable 
 """
 
 import time
+import twitter
+
 from threading import Thread
-from twitter import Twitter, TwitterStream, TwitterHTTPError, OAuth
+from twitter import Twitter, TwitterStream, TwitterHTTPError
+from kochira import config
 from kochira.service import Service
 from kochira.auth import requires_permission
 
 service = Service(__name__, __doc__)
+
+@service.config
+class Config(config.Config):
+    class OAuth(config.Config):
+        consumer_key = config.Field(doc="Twitter API consumer key.")
+        consumer_secret = config.Field(doc="Twitter API consumer secret.")
+        token = config.Field(doc="Twitter API OAuth token.")
+        token_secret = config.Field(doc="Twitter API OAuth token secret.")
+    class Channel(config.Config):
+        network = config.Field(doc="The network to announce on.")
+        channel = config.Field(doc="The channel to announce on.")
+
+    oauth = config.Field(doc="OAuth parameters.",
+                         type=OAuth)
+    announce = config.Field(doc="Places to announce tweets.",
+                         type=config.Many(Channel))
 
 @service.setup
 def make_twitter(bot):
     storage = service.storage_for(bot)
     config = service.config_for(bot)
 
-    storage.api = Twitter(auth=OAuth(**config["oauth"]))
+    storage.api = Twitter(auth=twitter.OAuth(**config.oauth._fields))
     storage.active = True
     storage.last = None
     storage.stream = Thread(target=_follow_userstream, args=(bot,), daemon=True)
@@ -117,8 +125,8 @@ def reply(client, target, origin, id, message=None):
     api.statuses.update(status=message, in_reply_to_status_id=id)
 
 def _follow_userstream(bot):
-    o = service.config_for(bot)["oauth"]
-    stream = TwitterStream(auth=OAuth(**o), domain="userstream.twitter.com", block=False)
+    o = service.config_for(bot).oauth._fields
+    stream = TwitterStream(auth=twitter.OAuth(**o), domain="userstream.twitter.com", block=False)
 
     for msg in stream.user():
         if msg is not None:
@@ -144,9 +152,9 @@ def _follow_userstream(bot):
             return
 
 def _announce(bot, text):
-    for announce in service.config_for(bot)["announce"]:
-        if announce["network"] in bot.networks:
-            bot.networks[announce["network"]].message(announce["channel"], text)
+    for announce in service.config_for(bot).announce:
+        if announce.network in bot.networks:
+            bot.networks[announce.network].message(announce.channel, text)
 
 def _find_brain(bot):
     import importlib
