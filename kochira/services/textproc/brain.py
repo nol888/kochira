@@ -18,6 +18,7 @@ import re
 
 from kochira.service import Service, background
 from cobe.brain import Brain
+from cobe.scoring import LengthScorer
 
 service = Service(__name__, __doc__)
 
@@ -28,7 +29,7 @@ def load_brain(bot):
     storage = service.storage_for(bot)
 
     storage.brain = Brain(config["brain_file"], check_same_thread=False)
-
+    storage.brain.scorer.add_scorer(2.0, LengthScorer())
 
 @service.shutdown
 def unload_brain(bot):
