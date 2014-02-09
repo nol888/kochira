@@ -165,7 +165,6 @@ def _add_quote(bot, network, channel, origin, quote):
 
 @service.command(r"add quote (?P<quote>.+)$", mention=True)
 @service.command(r"!quote add (?P<quote>.+)$")
-@requires_permission("quote")
 def add_quote(client, target, origin, quote):
     quote = _add_quote(client.bot, client.network, target, origin, quote)
 
