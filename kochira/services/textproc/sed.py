@@ -11,8 +11,8 @@ from kochira.service import Service
 service = Service(__name__, __doc__)
 
 
-@service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)")
-@service.command(r"(?P<who>.+?)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)")
+@service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)", eat=False, priority=-10)
+@service.command(r"(?P<who>.+?)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)", eat=False, priority=-10)
 def sed(client, target, origin, pattern, replacement, who=None, flags=None):
     """
     Find and replace.
