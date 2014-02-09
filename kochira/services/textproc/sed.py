@@ -31,7 +31,7 @@ service = Service(__name__, __doc__)
 
 
 @service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)")
-@service.command(r"(?P<who>.+)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)")
+@service.command(r"(?P<who>.+?)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)")
 def sed(client, target, origin, pattern, replacement, who=None, flags=None):
     if flags is None:
         flags = ""
