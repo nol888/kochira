@@ -3,12 +3,6 @@ Artificial (un)intelligence.
 
 Allows the bot to reply whenever its nickname is mentioned.
 
-Configuration Options
-=====================
-
-``brain_file``
-  Location to store the brain in.
-
 Commands
 ========
 None.
@@ -16,11 +10,16 @@ None.
 
 import re
 
+from kochira import config
 from kochira.service import Service, background
 from cobe.brain import Brain
 from cobe.scoring import LengthScorer
 
 service = Service(__name__, __doc__)
+
+@service.config
+class Config(config.Config):
+    brain_file = config.Field(doc="Location to store the brain in.", default="brain.db")
 
 
 @service.setup
@@ -28,7 +27,7 @@ def load_brain(bot):
     config = service.config_for(bot)
     storage = service.storage_for(bot)
 
-    storage.brain = Brain(config["brain_file"], check_same_thread=False)
+    storage.brain = Brain(config.brain_file, check_same_thread=False)
     storage.brain.scorer.add_scorer(2.0, LengthScorer())
 
 @service.shutdown
