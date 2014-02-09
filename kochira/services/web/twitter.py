@@ -3,34 +3,6 @@ Twitter timeline follower.
 
 Broadcasts a Twitter user's timeline into IRC. Provides tweeting capabilities as well as
 Markov-chain text generation with a compatible Brain.
-
-Commands
-========
-
-Tweet
------
-
-::
-
-    $bot: tweet <tweet>
-    !tweet <tweet>
-
-**Requires permission:** tweet
-
-Tweet the given text.
-
-Reply
------
-
-::
-
-    $bot: reply to <ID> [with <tweet>]
-    !reply <ID> [tweet]
-
-**Requires permission:** tweet
-
-Reply to the given tweet. Automatically prepends the appropriate @mention. If no tweet is given,
-attemps to search for a usable Brain service and uses it to generate a suitable reply.
 """
 
 import time
@@ -81,12 +53,37 @@ def kill_twitter(bot):
 @service.command(r"!tweet (?P<message>.+)$")
 @requires_permission("tweet")
 def tweet(client, target, origin, message):
+    """
+    Tweet
+
+    ::
+
+        $bot: tweet <tweet>
+        !tweet <tweet>
+
+    **Requires permission:** tweet
+
+    Tweet the given text.
+    """
     service.storage_for(client.bot).api.statuses.update(status=message)
 
 @service.command(r"reply to (?P<id>[0-9]+|last)(?: with (?P<message>.+))?$", mention=True)
 @service.command(r"!reply (?P<id>[0-9]+|last)(?: (?P<message>.+))?$")
 @requires_permission("tweet")
 def reply(client, target, origin, id, message=None):
+    """
+    Reply
+
+    ::
+
+        $bot: reply to <ID> [with <tweet>]
+        !reply <ID> [tweet]
+
+    **Requires permission:** tweet
+
+    Reply to the given tweet. Automatically prepends the appropriate @mention. If no tweet is given,
+    attemps to search for a usable Brain service and uses it to generate a suitable reply.
+    """
     storage = service.storage_for(client.bot)
     api = storage.api
 
