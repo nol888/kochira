@@ -56,13 +56,6 @@ def tweet(client, target, origin, message):
     """
     Tweet
 
-    ::
-
-        $bot: tweet <tweet>
-        !tweet <tweet>
-
-    **Requires permission:** tweet
-
     Tweet the given text.
     """
     service.storage_for(client.bot).api.statuses.update(status=message)
@@ -73,13 +66,6 @@ def tweet(client, target, origin, message):
 def reply(client, target, origin, id, message=None):
     """
     Reply
-
-    ::
-
-        $bot: reply to <ID> [with <tweet>]
-        !reply <ID> [tweet]
-
-    **Requires permission:** tweet
 
     Reply to the given tweet. Automatically prepends the appropriate @mention. If no tweet is given,
     attemps to search for a usable Brain service and uses it to generate a suitable reply.
