@@ -16,40 +16,65 @@ from kochira.service import Service
 service = Service(__name__, __doc__)
 
 
+def grant_permission(network, hostmask, permission, channel=None):
+    """
+    Grant a permission to a hostmask.
+    """
+    if ACLEntry.select().where(ACLEntry.hostmask == hostmask,
+                               ACLEntry.network == network,
+                               ACLEntry.permission == permission,
+                               ACLEntry.channel == channel if channel is not None else ACLEntry.channel >> None).exists():
+        return False
+
+    ACLEntry.create(hostmask=hostmask, network=network,
+                    permission=permission, channel=channel).save()
+
+    return True
+
+
+def revoke_permission(network, hostmask, permission, channel=None):
+    """
+    Revoke a permission from a hostmask.
+    """
+    return ACLEntry.delete().where(ACLEntry.hostmask == hostmask,
+                                   ACLEntry.network == network,
+                                   permission is None or ACLEntry.permission == permission,
+                                   channel is None or ACLEntry.channel == channel).execute() > 0
+
+
 @service.setup
 def setup_eval_locals(bot):
     storage = service.storage_for(bot)
     storage.eval_locals = {}
 
 
-@service.command(r"grant (?P<permission>\S+) to (?P<hostmask>\S+)(?: on channel (?P<channel>\S+))?\.?$", mention=True)
+@service.command(r"grant (?P<permission>\S+) to (?P<hostmask>\S+)(?: on (?P<channel>\S+))?$", mention=True)
 @requires_permission("admin")
 def grant(client, target, origin, permission, hostmask, channel=None):
     """
     Grant permission.
 
-    ::
-
-        $bot: grant <permission> to <hostmask>
-        $bot: grant <permission> to <hostmask> on channel <channel>
-
-    **Requires permission:** admin
-
     Grant a permission to the given hostmask. It can be done on a channel-specific
     basis. Wildcard hostmasks are permitted.
     """
 
-    ACLEntry.grant(client.network, hostmask, permission, channel)
+    if not grant_permission(client.network, hostmask, permission, channel):
+        client.message(target, "{origin}: Permission already exists.".format(
+            origin=origin
+        ))
+        return
 
     if channel is not None:
-        message = "Granted permission \"{permission}\" to {hostmask} on channel {channel} for network \"{network}\".".format(
+        message = "{origin}: Granted permission \"{permission}\" to {hostmask} on channel {channel} for network \"{network}\".".format(
+            origin=origin,
             permission=permission,
             hostmask=hostmask,
             channel=channel,
             network=client.network
         )
     else:
-        message = "Granted permission \"{permission}\" to {hostmask} globally for network \"{network}\".".format(
+        message = "{origin}: Granted permission \"{permission}\" to {hostmask} globally for network \"{network}\".".format(
+            origin=origin,
             permission=permission,
             hostmask=hostmask,
             network=client.network
@@ -58,18 +83,11 @@ def grant(client, target, origin, permission, hostmask, channel=None):
     client.message(target, message)
 
 
-@service.command(r"revoke (?P<permission>\S+) from (?P<hostmask>\S+)(?: on channel (?P<channel>\S+))?\.?$", mention=True)
+@service.command(r"revoke (?P<permission>\S+) from (?P<hostmask>\S+)(?: on (?P<channel>\S+))?$", mention=True)
 @requires_permission("admin")
 def revoke(client, target, origin, permission, hostmask, channel=None):
     """
     Revoke permission.
-
-    ::
-
-        $bot: revoke <permission> from <hostmask>
-        $bot: revoke <permission> from <hostmask> on channel <channel>
-
-    **Requires permission:** admin
 
     Revoke a permission from the given hostmask. It can be done on a
     channel-specific basis. Wildcard hostmasks are permitted and will revoke
@@ -79,7 +97,11 @@ def revoke(client, target, origin, permission, hostmask, channel=None):
     if permission == "everything":
         permission = None
 
-    ACLEntry.revoke(client.network, hostmask, permission, channel)
+    if not revoke_permission(client.network, hostmask, permission, channel):
+        client.message(target, "{origin}: Couldn't find any matching hostmasks.".format(
+            origin=origin
+        ))
+        return
 
     if permission is None:
         message_part = "all permissions"
@@ -87,14 +109,16 @@ def revoke(client, target, origin, permission, hostmask, channel=None):
         message_part = "permission \"{permission}\"".format(permission=permission)
 
     if channel is not None:
-        message = "Revoked {message_part} from {hostmask} on channel {channel} for network \"{network}\".".format(
+        message = "{origin}: Revoked {message_part} from {hostmask} on channel {channel} for network \"{network}\".".format(
+            origin=origin,
             message_part=message_part,
             hostmask=hostmask,
             channel=channel,
             network=client.network
         )
     else:
-        message = "Revoked {message_part} from {hostmask} globally for network \"{network}\".".format(
+        message = "{origin}: Revoked {message_part} from {hostmask} globally for network \"{network}\".".format(
+            origin=origin,
             message_part=message_part,
             hostmask=hostmask,
             network=client.network
@@ -103,18 +127,44 @@ def revoke(client, target, origin, permission, hostmask, channel=None):
     client.message(target, message)
 
 
+@service.command(r"(?:list )?authorized users(?: with (?P<permission>\S+))?(?: on (?P<channel>\S+))?", mention=True)
+@requires_permission("admin")
+def list_authorized(client, target, origin, permission=None, channel=None):
+    """
+    List authorized hostmasks.
+
+    List permissions that apply.
+    """
+
+    entries = ACLEntry.select().where(ACLEntry.network == client.network,
+                                      permission is None or ACLEntry.permission == permission,
+                                      channel is None or ACLEntry.channel == channel)
+
+    users = {}
+
+    for entry in entries:
+        perms, channels = users.setdefault(entry.hostmask, (set([]), set([])))
+        perms.add(entry.permission)
+        channels.add(entry.channel)
+
+    client.message(target, "{origin}: Authorized hostmasks for {network} {channel}: {users}".format(
+        origin=origin,
+        network=client.network,
+        channel="globally" if channel is None else "on " + channel,
+        users="; ".join(
+            "{name} {channels} ({perms})".format(
+                name=k,
+                channels=", ".join("globally" if channel is None else "on " + channel for channel in channels),
+                perms=", ".join(perms)
+        ) for k, (perms, channels) in users.items())
+    ))
+
+
 @service.command(r"(?P<r>re)?load service (?P<service_name>\S+)$", mention=True)
 @requires_permission("admin")
 def load_service(client, target, origin, r, service_name):
     """
     Load service.
-
-    ::
-
-        $bot: load service <name>
-        $bot: reload service <name>
-
-    **Requires permission:** admin
 
     Load or reload a service with the given name. Reloading will force all code to
     be reloaded.
@@ -150,12 +200,6 @@ def unload_service(client, target, origin, service_name):
     """
     Unload service.
 
-    ::
-
-        $bot: unload service <name>
-
-    **Requires permission:** admin
-
     Unload a currently running service.
     """
 
@@ -182,13 +226,6 @@ def unload_service(client, target, origin, service_name):
 def list_services(client, target, origin):
     """
     List services.
-
-    ::
-
-        $bot: services
-        $bot: list services
-
-    **Requires permission:** admin
 
     List all running services.
     """
@@ -223,13 +260,6 @@ def reload_services(client, target, origin):
 def eval_code(client, target, origin, code):
     """
     Evaluate code.
-
-    ::
-
-        $bot: eval <code>
-        >>> <code>
-
-    **Requires permission:** admin
 
     Evaluate code inside the bot. The local ``bot`` is provided for access to
     bot internals.
@@ -267,12 +297,6 @@ def rehash(client, target, origin):
     """
     Rehash configuration.
 
-    ::
-
-        $bot: rehash
-
-    **Requires permission:** admin
-
     Rehash the bot's configuration settings.
     """
 
@@ -294,13 +318,6 @@ def rehash(client, target, origin):
 def restart(client, target, origin):
     """
     Restart.
-
-    ::
-
-        $bot: restart
-        $bot: reboot
-
-    **Requires permission:** admin
 
     Restart the bot. Will ``exec`` a new process into the currently running process
     space.

@@ -82,15 +82,11 @@ def play_timed_reminder(bot, reminder):
         reminder.delete_instance()
 
 
-@service.command(r"(?:remind|tell) (?P<who>\S+) (?:about|to|that) (?P<message>.+) (?P<duration>(?:in|after) .+|tomorrow)$", mention=True)
-@service.command(r"(?:remind|tell) (?P<who>\S+) (?P<duration>(?:in|after) .+|tomorrow) (?:about|to|that) (?P<message>.+)$", mention=True)
+@service.command(r"(?:remind|tell) (?P<who>\S+) (?:about|to|that) (?P<message>.+) (?P<duration>(?:in|on|after) .+|tomorrow)$", mention=True, priority=1)
+@service.command(r"(?:remind|tell) (?P<who>\S+) (?P<duration>(?:in|on|after) .+|tomorrow) (?:about|to|that) (?P<message>.+)$", mention=True, priority=1)
 def add_timed_reminder(client, target, origin, who, duration, message):
     """
     Add timed reminder.
-
-    ::
-
-        $bot: (tell|remind) <who> (in|after) <time> about <what>
 
     Add a reminder that will play after `time` has elapsed. If the user has left
     the channel, the reminder will play as soon as they return.
@@ -137,10 +133,6 @@ def add_timed_reminder(client, target, origin, who, duration, message):
 def add_reminder(client, target, origin, who, message):
     """
     Add reminder.
-
-    ::
-
-        $bot: (tell|remind) <who> about <what>
 
     Add a reminder that will play when the user joins the channel or next speaks on
     the channel.

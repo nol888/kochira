@@ -17,11 +17,6 @@ def sed(client, target, origin, pattern, replacement, who=None, flags=None):
     """
     Find and replace.
 
-    ::
-
-        s/<pattern>/<replacement>/<flags>
-        <who>: s/<pattern>/<replacement>/<flags>
-
     Find a regular expression pattern and replace it. Regular expressions are implicitly global.
     Flags supported are `i` for case insensitive, and `s` for dot-all.
     """
@@ -50,7 +45,7 @@ def sed(client, target, origin, pattern, replacement, who=None, flags=None):
 
             if match is not None:
                 try:
-                    msg = expr.sub(replacement, message)
+                    msg = expr.sub("\x1f" + replacement + "\x1f", message)
                 except:
                     client.message(target, "{origin}: Couldn't parse that pattern.".format(
                         origin=origin

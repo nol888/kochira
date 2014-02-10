@@ -84,7 +84,8 @@ class IndexHandler(RequestHandler):
         services = [service for service, _ in self.application.bot.services.values()]
         services.sort(key=lambda s: s.name)
 
-        self.render("help/index.html", services=services)
+        self.render("help/index.html", services=services,
+                    bot_config=self.application.bot.config_class)
 
 
 class ServiceHelpHandler(RequestHandler):
@@ -99,7 +100,8 @@ class ServiceHelpHandler(RequestHandler):
 class ConfigModule(UIModule):
     def render(self, cfg):
         return self.render_string("help/_modules/config.html",
-                                  config=cfg, ConfigType=config.Config)
+                                  config=cfg, ConfigType=config.Config,
+                                  rst=rst)
 
 
 def make_application(settings):
@@ -127,13 +129,6 @@ def webserver_config(bot):
 def help(client, target, origin):
     """
     Help.
-
-    ::
-
-        $bot: help
-        $bot: help me!
-        !help
-        !commands
 
     Links the user to the web help service, if available.
     """

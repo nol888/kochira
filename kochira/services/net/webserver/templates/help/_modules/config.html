@@ -1,10 +1,10 @@
 {% if config._field_defs %}
-<dl class="dl-horizontal">
+<dl class="dl-horizontal config-options">
 {% for field in config._field_defs %}
     <dt>{{field.name}}</dt>
     <dd>
-        {{field.doc}}
-        {% if field.default is not field._sentinel %}(default: {{field.default}}){% end %}
+        {% raw rst(field.doc) %}
+        {% if field.default is not field._sentinel %}<p>Default: <tt class="literal"><span class="pre">{{repr(field.default)}}</span></tt></p>{% end %}
         {% if hasattr(field.type, "interior_type") and issubclass(field.type.interior_type(), ConfigType) %}
         {% module Config(field.type.interior_type()) %}
         {% end %}

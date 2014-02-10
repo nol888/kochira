@@ -15,3 +15,5 @@ docutils
 tornado
 twitter
 pathlib
+pyenchant
+textblob
