@@ -15,21 +15,17 @@ from datetime import datetime, timedelta
 from pysnap import Snapchat, MEDIA_VIDEO_NOAUDIO, MEDIA_VIDEO
 
 from kochira import config
-from kochira.service import Service
+from kochira.service import Service, Config
 
 service = Service(__name__, __doc__)
 
 @service.config
-class Config(config.Config):
-    class Channel(config.Config):
-        channel = config.Field(doc="Channel name.")
-        network = config.Field(doc="Channel network.")
-
+class Config(Config):
     username = config.Field(doc="The username to use when connecting.")
     password = config.Field(doc="The password to use when connecting.")
     imgur_clientid = config.Field(doc="Client ID for use with Imgur.")
-    announce = config.Field(doc="Channels to announce updates on.",
-                            type=config.Many(Channel))
+    announce = config.Field(doc="Whether or not to announce. Set this on a per-channel basis.",
+                            default=False)
 
 
 GIF_FRAMERATE = 7
@@ -102,15 +98,21 @@ def poll_for_updates(bot):
         else:
             link = "(could not convert video)"
 
-        for announce in config.announce:
-            bot.networks[announce.network].message(
-                announce.channel,
-                "New snap from {sender}! {link} ({dt})".format(
-                    sender=sender,
-                    link=link,
-                    dt=humanize.naturaltime(datetime.fromtimestamp(snap["sent"] / 1000.0))
+        for client_name, client in bot.clients.items():
+            for channel in client.channels:
+                config = service.config_for(bot, client_name, channel)
+
+                if not config.announce:
+                    continue
+
+                client.message(
+                    channel,
+                    "New snap from {sender}! {link} ({dt})".format(
+                        sender=sender,
+                        link=link,
+                        dt=humanize.naturaltime(datetime.fromtimestamp(snap["sent"] / 1000.0))
+                    )
                 )
-            )
 
         storage.snapchat.mark_viewed(snap["id"])
 

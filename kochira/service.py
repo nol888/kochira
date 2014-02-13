@@ -8,11 +8,15 @@ from . import config
 logger = logging.getLogger(__name__)
 
 
+class Config(config.Config):
+    autoload = config.Field(doc="Autoload this service?", default=True)
+    enabled = config.Field(doc="Enable this service?", default=True)
+
+
 class Service:
     """
     A service provides the bot with additional facilities.
     """
-    SERVICES_PACKAGE = 'kochira.services'
 
     EAT = object()
 
@@ -22,7 +26,7 @@ class Service:
         self.hooks = {}
         self.commands = set([])
         self.tasks = []
-        self.config_factory = config.Config
+        self.config_factory = Config
         self.on_setup = None
         self.on_shutdown = None
         self.logger = logging.getLogger(self.name)
@@ -34,6 +38,7 @@ class Service:
 
         def _decorator(f):
             bisect.insort(self.hooks.setdefault(hook, []), (-priority, id(f), f))
+            f.service = self
             return f
 
         return _decorator
@@ -146,11 +151,22 @@ class Service:
         if self.on_shutdown is not None:
             self.on_shutdown(bot)
 
-    def config_for(self, bot):
+    def config_for(self, bot, client_name=None, channel=None):
         """
         Get the configuration settings.
         """
-        return bot.config.services.get(self.name, self.config_factory())
+        config = bot.config.services.get(self.name, self.config_factory())
+
+        if client_name is not None:
+            client_config = bot.config.clients[client_name]
+            config = config.combine(client_config.services.get(self.name, self.config_factory()))
+
+            if channel is not None:
+                if channel in client_config.channels:
+                    channel_config = client_config.channels[channel]
+                    config = config.combine(channel_config.services.get(self.name, self.config_factory()))
+
+        return config
 
     def storage_for(self, bot):
         """

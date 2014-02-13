@@ -10,38 +10,49 @@ import multiprocessing
 from peewee import SqliteDatabase
 import signal
 import yaml
-from zmq.eventloop import ioloop
+
+from tornado import ioloop
 
 from . import config
-from .auth import ACLEntry
 from .client import Client
 from .db import database
 from .scheduler import Scheduler
 from .util import Expando
-from .service import Service
+from .service import Service, Config as ServiceConfig
+
+from kochira import services
+
 
 logger = logging.getLogger(__name__)
-
-
-class BaseServiceConfig(config.Config):
-    autoload = config.Field(doc="Autoload this service?", default=False)
 
 
 class ServiceConfigLoader(collections.Mapping):
     def __init__(self, bot, values):
         self.bot = bot
         self.configs = values
+        self._cache = {}
 
     def _config_factory_for(self, name):
         if name not in self.bot.services:
-            config_factory = BaseServiceConfig
+            config_factory = ServiceConfig
         else:
             service, _ = self.bot.services[name]
             config_factory = service.config_factory
+
         return config_factory
 
     def __getitem__(self, name):
-        return self._config_factory_for(name)(self.configs[name])
+        config_factory = self._config_factory_for(name)
+
+        # if we can't find the service name immediately, try removing its name
+        # from the list
+        if name.startswith(services.__name__) and name not in self.configs:
+            name = name[len(services.__name__):]
+
+        if name not in self._cache or \
+            not isinstance(self._cache[name], config_factory):
+            self._cache[name] = config_factory(self.configs[name])
+        return self._cache[name]
 
     def __iter__(self):
         return iter(self.configs)
@@ -51,6 +62,9 @@ class ServiceConfigLoader(collections.Mapping):
 
 
 def _config_class_factory(bot):
+    service_config_loader = functools.partial(ServiceConfigLoader, bot)
+    service_config_loader.get_default = lambda: {}
+
     class Config(config.Config):
         class Network(config.Config):
             autoconnect = config.Field(doc="Whether or not to autoconnect to this network.", default=True)
@@ -60,7 +74,7 @@ def _config_class_factory(bot):
             realname = config.Field(doc="Real name to use.", default=None)
 
             hostname = config.Field(doc="IRC server hostname.")
-            port = config.Field(doc="IRC serveer port.", default=None)
+            port = config.Field(doc="IRC server port.", default=None)
             password = config.Field(doc="IRC server password.", default=None)
             source_address = config.Field(doc="Source address to connect from.", default="")
 
@@ -72,20 +86,32 @@ def _config_class_factory(bot):
                 certificate_password = config.Field(doc="TLS certificate password.", default=None)
 
             class SASL(config.Config):
+                identity = config.Field(doc="SASL identity. Usually empty.", default=None)
                 username = config.Field(doc="SASL username.", default=None)
                 password = config.Field(doc="SASL password.", default=None)
+
+            class Channel(config.Config):
+                autojoin = config.Field(doc="Whether or not to autojoin to the channel.", default=True)
+                password = config.Field(doc="Password for the channel, if any.", default=None)
+                services = config.Field(doc="Mapping of per-channel service settings.", type=service_config_loader)
+                acl = config.Field(doc="Mapping of per-channel access control lists.", type=config.Mapping(config.Many(str, is_set=True)))
 
             tls = config.Field(doc="TLS settings.", type=TLS, default=TLS())
             sasl = config.Field(doc="SASL settings.", type=SASL, default=SASL())
 
+            channels = config.Field(doc="Mapping of channel settings.", type=config.Mapping(Channel))
+            services = config.Field(doc="Mapping of per-client service settings.", type=service_config_loader)
+            acl = config.Field(doc="Mapping of per-client access control lists.", type=config.Mapping(config.Many(str, is_set=True)))
+
         class Core(config.Config):
             database = config.Field(doc="Database file to use", default="kochira.db")
             max_backlog = config.Field(doc="Maximum backlog lines to store.", default=10)
+            max_workers = config.Field(doc="Max thread pool workers.", default=0)
             version = config.Field(doc="CTCP VERSION reply.", default="kochira IRC bot")
 
         core = config.Field(doc="Core configuration settings.", type=Core)
-        networks = config.Field(doc="Networks to connect to.", type=config.Mapping(Network))
-        services = config.Field(doc="Services to load. Please refer to service documentation for setting this.", type=functools.partial(ServiceConfigLoader, bot))
+        clients = config.Field(doc="Clients to connect.", type=config.Mapping(Network))
+        services = config.Field(doc="Services to load. Please refer to service documentation for setting this.", type=service_config_loader)
 
     return Config
 
@@ -97,7 +123,7 @@ class Bot:
 
     def __init__(self, config_file="config.yml"):
         self.services = {}
-        self.networks = {}
+        self.clients = {}
         self.io_loop = ioloop.IOLoop()
 
         self.config_class = _config_class_factory(self)
@@ -107,7 +133,7 @@ class Bot:
         self._connect_to_db()
 
     def run(self):
-        self.executor = ThreadPoolExecutor(multiprocessing.cpu_count())
+        self.executor = ThreadPoolExecutor(self.config.core.max_workers or multiprocessing.cpu_count())
         self.scheduler = Scheduler(self)
         self.scheduler.start()
 
@@ -116,62 +142,30 @@ class Bot:
         self._load_services()
         self._connect_to_irc()
 
-    def connect(self, network_name):
-        config = self.config.networks[network_name]
-
-        client = Client(self, network_name, config.nickname,
-            username=config.username,
-            realname=config.realname,
-            tls_client_cert=config.tls.certificate_file,
-            tls_client_cert_key=config.tls.certificate_keyfile,
-            tls_client_cert_password=config.tls.certificate_password,
-            sasl_username=config.sasl.username,
-            sasl_password=config.sasl.password
-        )
-
-        client.connect(
-            hostname=config.hostname,
-            password=config.password,
-            source_address=(config.source_address, 0),
-            port=config.port,
-            tls=config.tls.enabled,
-            tls_verify=config.tls.verify
-        )
-
-        self.networks[network_name] = client
-
-        def handle_next_message(fd=None, events=None):
-            if client._has_message():
-                client.poll_single()
-                self.io_loop.add_callback(handle_next_message)
-
-        self.io_loop.add_handler(client.connection.socket.fileno(),
-                                 handle_next_message,
-                                 ioloop.IOLoop.READ)
-
+    def connect(self, name):
+        client = Client.from_config(self, name,
+                                    self.config.clients[name])
+        self.clients[name] = client
         return client
 
-    def disconnect(self, network_name):
-        client = self.networks[network_name]
-        fileno = client.connection.socket.fileno()
-        self.io_loop.remove_handler(fileno)
+    def disconnect(self, name):
+        client = self.clients[name]
 
-        try:
-            client.quit()
-        finally:
-            del self.networks[network_name]
+        # schedule this for the next iteration of the ioloop so we can handle
+        # pending messages
+        self.io_loop.add_callback(client.quit)
+
+        del self.clients[name]
 
     def _connect_to_db(self):
         db_name = self.config.core.database
         database.initialize(SqliteDatabase(db_name, threadlocals=True))
         logger.info("Opened database connection: %s", db_name)
 
-        ACLEntry.create_table(True)
-
     def _connect_to_irc(self):
-        for network_name, config in self.config.networks.items():
+        for name, config in self.config.clients.items():
             if config.autoconnect:
-                self.connect(network_name)
+                self.connect(name)
 
         self.io_loop.start()
 
@@ -209,7 +203,7 @@ class Bot:
         storage = Expando()
 
         try:
-            module = importlib.import_module(name)
+            module = importlib.import_module(name, package=services.__name__)
 
             if reload:
                 module = imp.reload(module)
@@ -233,6 +227,11 @@ class Bot:
         """
         Unload a service from the bot.
         """
+        # if we can't find the service name immediately, try removing its name
+        # from the list
+        if name[0] == "." and name not in self.services:
+            name = services.__name__ + name
+
         service, _ = self.services[name]
         self._shutdown_service(service)
         del self.services[name]
@@ -247,14 +246,14 @@ class Bot:
             for service, storage in list(self.services.values())
         ]))
 
-    def run_hooks(self, hook, *args):
+    def run_hooks(self, hook, *args, **kwargs):
         """
         Attempt to dispatch a command to all command handlers.
         """
 
         for hook in self.get_hooks(hook):
             try:
-                r = hook(*args)
+                r = hook(*args, **kwargs)
                 if r is Service.EAT:
                     return Service.EAT
             except BaseException:

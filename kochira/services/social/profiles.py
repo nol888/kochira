@@ -15,6 +15,7 @@ service = Service(__name__, __doc__)
 
 class Profile(Model):
     who = CharField(255)
+    # TODO: requires migration from network to client_name
     network = CharField(255)
     text = TextField()
 
@@ -37,7 +38,7 @@ def forget_profile(client, target, origin):
     Remove the given profile text from the user.
     """
 
-    if Profile.delete().where(Profile.network == client.network,
+    if Profile.delete().where(Profile.network == client.name,
                               Profile.who == origin).execute():
         client.message(target, "{origin}: Okay, I won't remember you anymore.".format(
             origin=origin
@@ -57,10 +58,10 @@ def remember_profile(client, target, origin, text):
     """
 
     try:
-        profile = Profile.get(Profile.network == client.network,
+        profile = Profile.get(Profile.network == client.name,
                               Profile.who == origin)
     except Profile.DoesNotExist:
-        profile = Profile.create(network=client.network, who=origin,
+        profile = Profile.create(network=client.name, who=origin,
                                  text=text)
 
     profile.text = text
@@ -84,7 +85,7 @@ def get_profile(client, target, origin, who=None):
         who = origin
 
     try:
-        profile = Profile.get(Profile.network == client.network,
+        profile = Profile.get(Profile.network == client.name,
                               Profile.who == who)
     except Profile.DoesNotExist:
         client.message(target, "{origin}: {who} hasn't told me who they are yet.".format(

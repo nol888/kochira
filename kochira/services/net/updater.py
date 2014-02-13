@@ -12,7 +12,7 @@ import subprocess
 
 from kochira import config
 from kochira.auth import requires_permission
-from kochira.service import Service
+from kochira.service import Service, Config
 
 from tornado.web import Application, RequestHandler, asynchronous, HTTPError
 
@@ -20,19 +20,14 @@ service = Service(__name__, __doc__)
 
 
 @service.config
-class Config(config.Config):
-    class Channel(config.Config):
-        channel = config.Field(doc="Channel name.")
-        network = config.Field(doc="Channel network.")
-
+class Config(Config):
     remote = config.Field(doc="Remote to pull updates from.",
                           default="origin")
     branch = config.Field(doc="Branch to pull updates from.",
                           default="master")
     post_receive_key = config.Field(doc="Enable the post-receive hook if set. This is the ``key=<key>`` query argument.",
                                     default=None)
-    announce = config.Field(doc="Channels to announce updates on.",
-                            type=config.Many(Channel))
+    announce = config.Field(doc="Whether or not to announce. Set this on a per-channel basis.", default=False)
 
 
 class UpdateError(Exception):
@@ -117,12 +112,16 @@ class PostReceiveHandler(RequestHandler):
                 raise future.exception()
             self.finish()
 
-            for announce in config.announce:
-                for line in get_log(head, "HEAD"):
-                    self.application.bot.networks[announce.network].message(
-                        announce.channel,
-                        "Update! {}".format(line)
-                    )
+            for client_name, client in self.application.bot.clients.items():
+                for channel in client.channels:
+                    config = service.config_for(self.application.bot,
+                                                client_name, channel)
+
+                    if not config.announce:
+                        continue
+
+                    for line in get_log(head, "HEAD"):
+                        client.message(channel, "Update! {}".format(line))
 
         head = rev_parse("HEAD")
 

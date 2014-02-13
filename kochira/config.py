@@ -1,3 +1,6 @@
+import abc
+import collections
+
 def _id(x):
     return x
 
@@ -34,7 +37,7 @@ class Field:
         obj._fields[self.name] = v
 
 
-class _ConfigMeta(type):
+class _ConfigMeta(abc.ABCMeta):
     def __new__(cls, name, bases, dct):
         newcls = type.__new__(cls, name, bases, dct)
 
@@ -56,19 +59,18 @@ class _ConfigMeta(type):
         return newcls
 
 
-class Config(metaclass=_ConfigMeta):
+class Config(collections.MutableMapping, metaclass=_ConfigMeta):
     def __init__(self, values=None):
         if values is None:
             values = {}
 
         self._fields = {}
-        self._extra = {}
 
         for k, v in values.items():
-            if k not in self._field_mappings:
-                self._extra[k] = v
-                continue
-            self._fields[k] = self._field_mappings[k].unpack(v)
+            if k in self._field_mappings:
+                v = self._field_mappings[k].unpack(v)
+
+            self._fields[k] = v
 
     def __repr__(self):
         return "{}({})".format(
@@ -76,9 +78,61 @@ class Config(metaclass=_ConfigMeta):
             ", ".join("{}={!r}".format(k, v) for k, v in self._fields.items())
         )
 
+    @staticmethod
+    def _resolve(mine, other):
+        if isinstance(mine, Config):
+            # if the other side is a config, then we'll just combine
+            return mine.combine(other)
+        elif isinstance(mine, dict):
+            # if they're a dict, then we compose other into mine
+            d = mine.copy()
+            d.update(other)
+            return d
+        else:
+            return other
+
+    def combine(self, other):
+        """
+        Combine two configurations together. The other configuration must be
+        a narrower (i.e. superclass or same) type as this one. The resulting
+        configuration will be the wider (i.e. this) type.
+        """
+
+        if self.__class__ is not other.__class__ and \
+            not issubclass(self.__class__, other.__class__):
+            raise TypeError("{} is not narrower than {}".format(self.__class__,
+                                                                other.__class__))
+
+        fields = self._fields.copy()
+
+        # combine their fields
+        for k, v in other._fields.items():
+            if k in fields:
+                # we need to perform conflict resolution
+                fields[k] = Config._resolve(fields[k], v)
+            else:
+                fields[k] = v
+
+        return self.__class__(fields)
+
     @classmethod
     def interior_type(cls):
         return cls
+
+    def __getitem__(self, name):
+        return self._fields[name]
+
+    def __setitem__(self, name, value):
+        self._fields[name] = value
+
+    def __delitem__(self, name):
+        raise TypeError("does not support item deletion")
+
+    def __iter__(self):
+        return iter(self._fields)
+
+    def __len__(self):
+        return len(self._fields)
 
 
 class Mapping:
@@ -99,11 +153,15 @@ class Mapping:
 
 
 class Many:
-    def __init__(self, type):
+    def __init__(self, type, is_set=False):
         self.type = type
+        self.is_set = is_set
 
     def __call__(self, xs):
-        return [self.type(x) for x in xs]
+        ys = [self.type(x) for x in xs]
+        if self.is_set:
+            ys = set(ys)
+        return ys
 
     def interior_type(self):
         if hasattr(self.type, "interior_type"):
@@ -112,4 +170,4 @@ class Many:
         return self.type
 
     def get_default(self):
-        return []
+        return [] if not self.is_set else set([])

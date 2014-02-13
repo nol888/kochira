@@ -8,31 +8,31 @@ import threading
 from datetime import datetime
 
 from kochira import config
-from kochira.service import Service
+from kochira.service import Service, Config
 from pathlib import Path
 
 service = Service(__name__, __doc__)
 
 
 @service.config
-class Config(config.Config):
+class Config(Config):
     log_dir = config.Field(doc="Path to the log directory.", default="logs")
 
 
-def _is_log_open(storage, network, channel):
-    return (network, channel) in storage.handles
+def _is_log_open(storage, client_name, channel):
+    return (client_name, channel) in storage.handles
 
 
-def _get_file_handle(storage, network, channel):
-    k = (network, channel)
+def _get_file_handle(storage, client_name, channel):
+    k = (client_name, channel)
 
     if k not in storage.handles:
-        network_path = storage.path / network
+        client_name_path = storage.path / client_name
 
-        if not network_path.exists():
-            network_path.mkdir(parents=True)
+        if not client_name_path.exists():
+            client_name_path.mkdir(parents=True)
 
-        path = network_path / (channel + ".log")
+        path = client_name_path / (channel + ".log")
         f = path.open("ab")
 
         service.logger.debug("Opened handle for: %s", path)
@@ -59,7 +59,7 @@ def log(client, channel, what):
     now = datetime.utcnow()
 
     storage = service.storage_for(client.bot)
-    f = _get_file_handle(storage, client.network, channel)
+    f = _get_file_handle(storage, client.name, channel)
 
     with storage.lock:
         f.write(("{now} {what}\n".format(
@@ -87,7 +87,7 @@ def log_global(client, origin, what):
         if origin in info["users"]:
             log(client, channel, what)
 
-    if _is_log_open(service.storage_for(client.bot), client.network, origin):
+    if _is_log_open(service.storage_for(client.bot), client.name, origin):
         log(client, origin, what)
 
 
@@ -124,6 +124,11 @@ def flush_log_handles(bot):
 @service.hook("own_message", priority=10000)
 def on_own_message(client, target, message):
     on_channel_message(client, target, client.nickname, message)
+
+
+@service.hook("own_notice", priority=10000)
+def on_own_notice(client, target, message):
+    on_channel_notice(client, target, client.nickname, message)
 
 
 @service.hook("invite", priority=10000)

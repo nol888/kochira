@@ -39,7 +39,7 @@ this requester, other responder
 I (this requester) need to make a request to you (other responder)::
 
     [
-        my network name,
+        my client name,
         my requesting user's hostmask,
         remaining IRC payload (request)...
     ]
@@ -51,7 +51,7 @@ You (other requester) need a response from me (this responder)::
 
     [
         your identity,
-        my network name,
+        my client name,
         my bot's hostmask,
         remaining IRC payload (response)...
     ]
@@ -64,13 +64,13 @@ from zmq.eventloop import zmqstream
 
 from kochira import config
 from kochira.auth import requires_permission
-from kochira.service import Service
+from kochira.service import Service, Config
 
 service = Service(__name__, __doc__)
 
 
 @service.config
-class Config(config.Config):
+class Config(Config):
     class Federation(config.Config):
         autoconnect = config.Field(doc="Whether the bot should attempt to " \
                                        "autoconnect to the federation.")
@@ -122,8 +122,8 @@ class RequesterConnection:
                                               io_loop=self.bot.io_loop)
             self.stream.on_recv(self.on_raw_recv)
 
-    def request(self, network, target, origin, message):
-        msg = [network.encode("utf-8"),
+    def request(self, client_name, target, origin, message):
+        msg = [client_name.encode("utf-8"),
                (origin + "!user@federated/kochira/" + origin).encode("utf-8"),
                b"PRIVMSG",
                target.encode("utf-8"),
@@ -138,9 +138,9 @@ class RequesterConnection:
         service.logger.info("Received response from %s: %s", self.identity,
                             msg)
 
-        network, origin, type, *args = msg
+        client_name, origin, type, *args = msg
 
-        network = network.decode("utf-8")
+        client_name = client_name.decode("utf-8")
         origin, _, _ = origin.decode("utf-8").partition("!")
 
         if type == b"PRIVMSG":
@@ -149,7 +149,7 @@ class RequesterConnection:
             target = target.decode("utf-8")
             message = message.decode("utf-8")
 
-            self.bot.networks[network].message(
+            self.bot.clients[client_name].message(
                 target,
                 "(via {identity}) {message}".format(
                     identity=self.identity,
@@ -168,10 +168,10 @@ class ResponderClient:
     The remoting proxy takes remote queries, runs them and sends them back to
     the remote via the router.
     """
-    def __init__(self, bot, remote_name, network, target):
+    def __init__(self, bot, remote_name, name, target):
         self.bot = bot
         self.remote_name = remote_name
-        self.network = network
+        self.name = name
         self.target = target
 
     @property
@@ -186,7 +186,7 @@ class ResponderClient:
         raise RuntimeError("operation not supported in federated mode")
 
     def message(self, target, message):
-        msg = [self.network.encode("utf-8"),
+        msg = [self.name.encode("utf-8"),
                (self.nickname + "!bot@federated/kochira/" + self.nickname).encode("utf-8"),
                b"PRIVMSG",
                target.encode("utf-8"),
@@ -207,10 +207,10 @@ def on_router_recv(bot, msg):
 
     service.logger.info("Received request from %s: %s", ident, msg)
 
-    network, origin, type, *args = msg
+    client_name, origin, type, *args = msg
 
     ident = ident.decode("utf-8")
-    network = network.decode("utf-8")
+    client_name = client_name.decode("utf-8")
     origin, _, _ = origin.decode("utf-8").partition("!")
 
     if type == b"PRIVMSG":
@@ -219,7 +219,7 @@ def on_router_recv(bot, msg):
         target = target.decode("utf-8")
         message = message.decode("utf-8")
 
-        client = ResponderClient(bot, ident, network, target)
+        client = ResponderClient(bot, ident, client_name, target)
 
         bot.run_hooks("channel_message", client, target, origin, message)
 
@@ -290,7 +290,7 @@ def add_federation(client, target, origin, name):
     Connect to a bot specified in the federation configuration.
     """
 
-    config = service.config_for(client.bot)
+    config = service.config_for(client.bot, client.name, target)
     storage = service.storage_for(client.bot)
 
     if name in storage.federations:
@@ -373,7 +373,7 @@ def federated_request(client, target, origin, name, what, mode=None):
     else:
         if mode == ":":
             what = name + ": " + what
-        remote.request(client.network, target, origin, what)
+        remote.request(client.name, target, origin, what)
 
 
 @service.command(r"who are you federated with\??$", mention=True)
