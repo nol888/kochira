@@ -19,7 +19,7 @@ service = Service(__name__, __doc__)
 @service.setup
 def setup_eval_locals(bot):
     storage = service.storage_for(bot)
-    storage.eval_locals = {}
+    storage.eval_globals = {"bot": bot}
 
 
 @service.command(r"(?P<r>re)?load service (?P<service_name>\S+)$", mention=True, priority=3000)
@@ -127,8 +127,10 @@ def eval_code(client, target, origin, code):
     sys.stdout = buf
 
     try:
-        eval(compile(code, "<irc>", "single"),
-             {"bot": client.bot}, storage.eval_locals)
+        my_locals = {}
+        exec(compile(code, "<irc>", "single"),
+             storage.eval_globals, my_locals)
+        storage.eval_globals.update(my_locals)
     except BaseException as e:
         client.message(target, "<<! {name}: {info}".format(
             name=e.__class__.__name__,
