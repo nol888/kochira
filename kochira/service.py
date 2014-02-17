@@ -3,7 +3,12 @@ import re
 import logging
 import bisect
 
+from pydle.async import coroutine, Future
+
+from .auth import has_permission, requires_permission
 from . import config
+
+from .util import Expando
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +16,13 @@ logger = logging.getLogger(__name__)
 class Config(config.Config):
     autoload = config.Field(doc="Autoload this service?", default=True)
     enabled = config.Field(doc="Enable this service?", default=True)
+
+
+class BoundService:
+    def __init__(self, service):
+        self.service = service
+        self.storage = Expando()
+        self.contexts = {}
 
 
 class Service:
@@ -63,7 +75,31 @@ class Service:
             f.patterns.add((pattern, mention))
 
             @functools.wraps(f)
-            def _command_handler(client, origin, target, message):
+            @coroutine
+            def _command_handler(client, target, origin, message):
+                contexts = getattr(f, "contexts", set([]))
+                if contexts:
+                    # check for contexts
+                    bound = self.binding_for(client.bot)
+
+                    my_contexts = \
+                        bound.contexts.get(client.name, {}).get(target, set([])) | \
+                        bound.contexts.get(client.name, {}).get(None, set([]))
+
+                    if not my_contexts & contexts:
+                        return
+
+                # check for permissions
+                permissions = getattr(f, "permissions", set([]))
+
+                hostmask = "{nickname}!{username}@{hostname}".format(
+                    nickname=origin,
+                    username=client.users[origin]["username"],
+                    hostname=client.users[origin]["hostname"]
+                )
+                if not all(has_permission(client, hostmask, permission, target) for permission in permissions):
+                    return
+
                 if strip:
                     message = message.strip()
 
@@ -87,7 +123,10 @@ class Service:
                     if k in f.__annotations__ and v is not None:
                         kwargs[k] = f.__annotations__[k](v)
 
-                r = f(client, origin, target, **kwargs)
+                r = f(client, target, origin, **kwargs)
+
+                if isinstance(r, Future):
+                    r = yield r
 
                 if r is not None:
                     return r
@@ -152,8 +191,12 @@ class Service:
 
     def run_shutdown(self, bot):
         """
-        Run all setup functions for the service.
+        Run all shutdown functions for the service.
         """
+
+        # unschedule remaining work
+        bot.scheduler.unschedule_service(self)
+
         if self.on_shutdown is not None:
             self.on_shutdown(bot)
 
@@ -178,12 +221,30 @@ class Service:
         """
         Get the disposable storage object.
         """
-        _, storage = bot.services[self.name]
-        return storage
+        return self.binding_for(bot).storage
+
+    def binding_for(self, bot):
+        """
+        Get the service binding.
+        """
+        return bot.services[self.name]
 
     def model(self, model):
         self.models.add(model)
         return model
+
+    def add_context(self, client, context, target=None):
+        self.binding_for(client.bot).contexts \
+            .setdefault(client.name, {}) \
+            .setdefault(target, set([])).add(context)
+
+    def has_context(self, client, context, target=None):
+        return context in self.binding_for(client.bot).contexts \
+            .get(client.name, {}) \
+            .get(target, set([]))
+
+    def remove_context(self, client, context, target=None):
+        self.binding_for(client.bot).contexts[client.name][target].remove(context)
 
 
 def background(f):
@@ -194,13 +255,25 @@ def background(f):
     f.background = True
 
     @functools.wraps(f)
-    def _inner(client, *args, **kwargs):
-        future = client.bot.executor.submit(f, client, *args, **kwargs)
-
-        @future.add_done_callback
-        def on_complete(future):
-            exc = future.exception()
-            if exc is not None:
-                logger.error("Command error", exc_info=exc)
+    @coroutine
+    def _inner(thing, *args, **kwargs):
+        result = yield thing.executor.submit(f, thing, *args, **kwargs)
+        if isinstance(result, Future):
+            result = yield result
+        return result
 
     return _inner
+
+
+def requires_context(context):
+    """
+    Require a context for the command.
+    """
+
+    def _decorator(f):
+        if not hasattr(f, "contexts"):
+            f.contexts = set([])
+        f.contexts.add(context)
+
+        return f
+    return _decorator

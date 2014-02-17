@@ -8,8 +8,11 @@ import re
 import requests
 from lxml import etree
 
+from pydle.async import coroutine
+
 from kochira import config
 from kochira.service import Service, background, Config
+from kochira.userdata import UserData
 
 service = Service(__name__, __doc__)
 
@@ -19,24 +22,46 @@ class Config(Config):
 
 
 @service.command(r"!wa (?P<query>.+)$")
-@service.command(r"(?:compute|calculate|mathify) (?P<query>.+)$", mention=True)
+@service.command(r"(?:compute|calculate|mathify) (?:for (?P<who>\S+))?(?P<query>.+)$", mention=True)
 @background
-def compute(client, target, origin, query):
+@coroutine
+def compute(client, target, origin, query, who=None):
     """
     Compute.
 
     Run a query on Wolfram|Alpha and display the result.
     """
 
+    if who is not None:
+        user_data = yield UserData.lookup_default(client, who)
+
+        if "location" not in user_data:
+            client.message(target, "{origin}: I don't have location information for {who}.".format(
+                origin=origin,
+                who=who
+            ))
+            return
+    else:
+        try:
+            user_data = yield UserData.lookup(client, origin)
+        except UserData.DoesNotExist:
+            user_data = {}
+
     config = service.config_for(client.bot)
 
+    params = {
+        "input": query,
+        "appid": config.appid,
+        "format": "plaintext",
+        "reinterpret": "true"
+    }
+
+    location = user_data.get("location", None)
+    if location is not None:
+        params["latlong"] = "{lat},{lng}".format(**location)
+
     resp = requests.get("http://api.wolframalpha.com/v2/query",
-        params={
-            "input": query,
-            "appid": config.appid,
-            "format": "plaintext",
-            "reinterpret": "true"
-        },
+        params=params,
         stream=True
     )
 
@@ -51,27 +76,17 @@ def compute(client, target, origin, query):
         return
 
     result_node, = result_node
+
     inp = " ".join(result_node.xpath("pod[@id='Input']/subpod[1]/plaintext/text()")).strip()
+
     primary = re.sub(
         r"(?<!\\)\\:([0-9a-fA-F]{4})",
         lambda x: chr(int(x.group(1), 16)),
         "\n".join(result_node.xpath("pod[@primary='true']/subpod[1]/plaintext/text()")).strip()
-    ).split("\n")
+    ).replace("\n", "; ")
 
-    if len(primary) > 1:
-        client.message(target, "{origin}: {inp}".format(
-            origin=origin,
-            inp=inp
-        ))
-
-        for line in primary:
-            client.message(target, "{origin}: = {line}".format(
-                origin=origin,
-                line=line
-            ))
-    else:
-        client.message(target, "{origin}: {inp} = {primary}".format(
-            origin=origin,
-            inp=inp,
-            primary=primary[0]
-        ))
+    client.message(target, "{origin}: {inp} = {primary}".format(
+        origin=origin,
+        inp=inp,
+        primary=primary
+    ))

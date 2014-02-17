@@ -55,8 +55,8 @@ def get_log(from_rev, to_rev):
     if p.returncode != 0:
         raise UpdateError("git log failed")
 
-    return (line for line in out.decode("utf-8").rstrip("\n").split("\n")
-            if line)
+    return reversed(line for line in out.decode("utf-8").rstrip("\n").split("\n")
+                    if line)
 
 
 def do_update(remote, branch):
@@ -121,7 +121,7 @@ class PostReceiveHandler(RequestHandler):
                         continue
 
                     for line in get_log(head, "HEAD"):
-                        client.message(channel, "Update! {}".format(line))
+                        client.notice(channel, "Update! {}".format(line))
 
         head = rev_parse("HEAD")
 

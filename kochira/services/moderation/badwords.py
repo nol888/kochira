@@ -63,7 +63,7 @@ def add_badword(client, target, origin, word):
         ))
 
 
-@service.command("(?P<word>.+) is not a bad word", mention=True, priority=1)
+@service.command("(?P<word>.+) is not a bad word", mention=True, priority=2550)
 @requires_permission("badword")
 def remove_badword(client, target, origin, word):
     """
@@ -98,7 +98,7 @@ def list_badwords(client, target, origin):
     ))
 
 
-@service.hook("channel_message")
+@service.hook("channel_message", priority=2500)
 def check_badwords(client, target, origin, message):
     config = service.config_for(client.bot, client.name, target)
 

@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 
 import collections
 import functools
@@ -11,14 +11,15 @@ from peewee import SqliteDatabase
 import signal
 import yaml
 
-from pydle.async import EventLoop
+from pydle.async import EventLoop, coroutine
 
 from . import config
 from .client import Client
 from .db import database
 from .scheduler import Scheduler
 from .util import Expando
-from .service import Service, Config as ServiceConfig
+from .service import Service, BoundService, Config as ServiceConfig
+from .userdata import UserDataKVPair
 
 from kochira import services
 
@@ -36,7 +37,7 @@ class ServiceConfigLoader(collections.Mapping):
         if name not in self.bot.services:
             config_factory = ServiceConfig
         else:
-            service, _ = self.bot.services[name]
+            service = self.bot.services[name].service
             config_factory = service.config_factory
 
         return config_factory
@@ -135,7 +136,6 @@ class Bot:
     def run(self):
         self.executor = ThreadPoolExecutor(self.config.core.max_workers or multiprocessing.cpu_count())
         self.scheduler = Scheduler(self)
-        self.scheduler.start()
 
         signal.signal(signal.SIGHUP, self._handle_sighup)
 
@@ -159,8 +159,9 @@ class Bot:
 
     def _connect_to_db(self):
         db_name = self.config.core.database
-        database.initialize(SqliteDatabase(db_name, threadlocals=True))
+        database.initialize(SqliteDatabase(db_name, check_same_thread=False))
         logger.info("Opened database connection: %s", db_name)
+        UserDataKVPair.create_table(True)
 
     def _connect_to_irc(self):
         for name, config in self.config.clients.items():
@@ -177,12 +178,28 @@ class Bot:
                 except:
                     pass # it gets logged
 
-    def _shutdown_service(self, service):
-        service.run_shutdown(self)
-        self.scheduler.unschedule_service(service)
-
     def defer_from_thread(self, fn, *args, **kwargs):
-        self.event_loop.schedule(functools.partial(fn, *args, **kwargs))
+        fut = Future()
+
+        @coroutine
+        def _callback():
+            try:
+                r = fn(*args, **kwargs)
+            except Exception as e:
+                fut.set_exception(e)
+            else:
+                if isinstance(r, Future):
+                    try:
+                        r = yield r
+                    except Exception as e:
+                        fut.set_exception(e)
+                    else:
+                        fut.set_result(r)
+                else:
+                    fut.set_result(r)
+
+        self.event_loop.schedule(_callback)
+        return fut
 
     def load_service(self, name, reload=False):
         """
@@ -192,18 +209,20 @@ class Bot:
         instance of ``kochira.service.Service`` and configured appropriately.
         """
 
+        if name[0] == ".":
+            name = services.__name__ + name
+
         # ensure that the service's shutdown routine is run
         if name in self.services:
-            service, _ = self.services[name]
-            self._shutdown_service(service)
+            service = self.services[name].service
+            service.run_shutdown(self)
 
         # we create an expando storage first for bots to load any locals they
         # need
         service = None
-        storage = Expando()
 
         try:
-            module = importlib.import_module(name, package=services.__name__)
+            module = importlib.import_module(name)
 
             if reload:
                 module = imp.reload(module)
@@ -212,7 +231,7 @@ class Bot:
                 raise RuntimeError("{} is not a valid service".format(name))
 
             service = module.service
-            self.services[service.name] = (service, storage)
+            self.services[service.name] = BoundService(service)
 
             service.run_setup(self)
         except:
@@ -232,9 +251,13 @@ class Bot:
         if name[0] == "." and name not in self.services:
             name = services.__name__ + name
 
-        service, _ = self.services[name]
-        self._shutdown_service(service)
-        del self.services[name]
+        try:
+            service = self.services[name].service
+            service.run_shutdown(self)
+            del self.services[name]
+        except:
+            logger.error("Couldn't unload service %s", name, exc_info=True)
+            raise
 
     def get_hooks(self, hook):
         """
@@ -242,8 +265,8 @@ class Bot:
         """
 
         return (hook for _, _, hook in heapq.merge(*[
-            service.hooks.get(hook, [])
-            for service, storage in list(self.services.values())
+            bound.service.hooks.get(hook, [])
+            for bound in list(self.services.values())
         ]))
 
     def run_hooks(self, hook, *args, **kwargs):

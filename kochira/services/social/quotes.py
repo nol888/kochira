@@ -188,9 +188,9 @@ def read_quote(client, target, origin, qid: int):
     ))
 
 
-@service.command(r"(?:give me a )?random quote(?: from (?P<channel>\S+)(?: on (?P<network>.+?))?)?(?: matching (?P<query>.+))?$", mention=True)
+@service.command(r"(?:give me a )?random quote(?: matching (?P<query>.+))?$", mention=True)
 @service.command(r"!quote rand(?: (?P<query>.+))?$")
-def rand_quote(client, target, origin, query=None, channel=None, network=None):
+def rand_quote(client, target, origin, query=None):
     """
     Random quote.
 
@@ -203,17 +203,7 @@ def rand_quote(client, target, origin, query=None, channel=None, network=None):
     else:
         q = Quote.select()
 
-    if channel is None:
-        channel = target
-
-    if network is None:
-        network = client.network
-
     q = q \
-        .where(
-            fn.lower(Quote.network) == fn.lower(network),
-            fn.lower(Quote.channel) == fn.lower(channel)
-        ) \
         .order_by(fn.Random()) \
         .limit(1)
 
@@ -244,25 +234,15 @@ def _find_quotes(bot, query):
         .where(Quote.id << SQL("({})".format(", ".join(str(qid) for qid in qids))))
 
 
-@service.command(r"find (?:a )?quote(?: from (?P<channel>\S+)(?: on (?P<network>.+?))?)? matching (?P<query>.+)$", mention=True)
+@service.command(r"find (?:a )?quote matching (?P<query>.+)$", mention=True)
 @service.command(r"!quote find (?P<query>.+)$")
-def find_quote(client, target, origin, query, channel=None, network=None):
+def find_quote(client, target, origin, query):
     """
     Find quote.
 
     Full-text search for a given quote.
     """
-
-    if channel is None:
-        channel = target
-
-    if network is None:
-        network = client.network
-
-    quotes = list(_find_quotes(client.bot, query).where(
-        fn.lower(Quote.network) == fn.lower(network),
-        fn.lower(Quote.channel) == fn.lower(channel)
-    ))
+    quotes = list(_find_quotes(client.bot, query))
 
     if not quotes:
         client.message(target, "{origin}: Couldn't find any quotes.".format(

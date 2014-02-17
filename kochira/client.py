@@ -4,6 +4,7 @@ from datetime import timedelta
 import textwrap
 
 from pydle import Client as _Client
+from pydle.async import Future, coroutine
 from pydle.features.rfc1459.protocol import MESSAGE_LENGTH_LIMIT
 
 from .service import Service
@@ -28,6 +29,10 @@ class Client(_Client):
     @property
     def config(self):
         return self.bot.config.clients[self.name]
+
+    @property
+    def executor(self):
+        return self.bot.executor
 
     @classmethod
     def from_config(cls, bot, name, config):
@@ -121,8 +126,8 @@ class Client(_Client):
         @self.bot.defer_from_thread
         def _callback():
             super(Client, self).message(target, message)
-            self._run_hooks("own_message", target, [target, message])
             self._add_to_backlog(target, self.nickname, message)
+            self._run_hooks("own_message", target, [target, message])
 
     def notice(self, target, message):
         message = self._autotruncate("PRIVMSG", target, message)
@@ -132,6 +137,7 @@ class Client(_Client):
             super(Client, self).notice(target, message)
             self._run_hooks("own_notice", target, [target, message])
 
+    @coroutine
     def _run_hooks(self, name, target, args=None, kwargs=None):
         if args is None:
             args = []
@@ -147,7 +153,11 @@ class Client(_Client):
 
             try:
                 r = hook(self, *args, **kwargs)
+                if isinstance(r, Future):
+                    r = yield r
+
                 if r is Service.EAT:
+                    logging.debug("EAT suppressed further hooks.")
                     return Service.EAT
             except BaseException:
                 logger.error("Hook processing failed", exc_info=True)
@@ -178,12 +188,12 @@ class Client(_Client):
         self._run_hooks("user_mode_change", None, [modes])
 
     def on_channel_message(self, target, by, message):
-        self._run_hooks("channel_message", target, [target, by, message])
         self._add_to_backlog(target, by, message)
+        self._run_hooks("channel_message", target, [target, by, message])
 
     def on_private_message(self, by, message):
-        self._run_hooks("private_message", by, [by, message])
         self._add_to_backlog(by, by, message)
+        self._run_hooks("private_message", by, [by, message])
 
     def on_nick_change(self, old, new):
         self._run_hooks("nick_change", new, [old, new])
