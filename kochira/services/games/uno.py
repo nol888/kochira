@@ -14,9 +14,8 @@ service = Service(__name__, __doc__)
 
 
 @service.setup
-def setup_contexts(bot):
-    storage = service.storage_for(bot)
-    storage.games = {}
+def setup_contexts(ctx):
+    ctx.storage.games = {}
 
 
 class UnoStateError(Exception):
@@ -186,7 +185,7 @@ class Game:
         # now handle special cards
         if rank == Game.DRAW_TWO:
             self.must_draw += 2
-        elif rank == Game.SKIP:
+        elif rank == Game.SKIP and self.must_draw == 0:
             self._advance()
         elif rank == Game.REVERSE:
             self.direction = -self.direction
@@ -259,193 +258,168 @@ def show_card_irc(card):
 
 
 def show_scores(game):
-    return ", ".join("{} ({} cards)".format(k, len(v))
+    return ", ".join(ctx._("{player} ({num} cards)").format(player=k, num=len(v))
                      for k, v in game.scores())
 
-def send_summary(client, target, game, prefix=""):
-    client.message(target, "{turn}: {prefix}It's your turn.{stack} Top card ({count} left): {top}".format(
+def send_summary(ctx, game, prefix=""):
+    ctx.message(ctx._("{turn}: {prefix}It's your turn.{stack} Top card ({count} left): {top}").format(
         turn=game.turn,
         prefix=prefix,
         count=len(game.draw_pile),
-        stack=" Stack a special card or pass and draw {}.".format(game.must_draw) if game.must_draw > 0 else "",
+        stack=ctx._(" Stack a special card or pass and draw {}.").format(game.must_draw) if game.must_draw > 0 else "",
         top=show_card_irc(game.top)
     ))
 
 
-def send_hand(client, target, player, game):
-    client.notice(player, "[{}] Uno: Your hand: {hand}".format(target,
+def send_hand(ctx, player, game):
+    ctx.client.notice(player, ctx._("[{target}] Uno: Your hand: {hand}").format(
+        target=ctx.target,
         hand=" ".join(show_card_irc(card) for card in game.players[player])
     ))
 
 
-def do_game_over(client, target, prefix=""):
-    storage = service.storage_for(client.bot)
+def do_game_over(ctx, prefix=""):
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    game = storage.games[client.name, target]
-
-    client.message(target, prefix + "Game over! Final results: {results}".format(
+    ctx.message(prefix + ctx._("Game over! Final results: {results}").format(
         results=show_scores(game)
     ))
-    del storage.games[client.name, target]
-    service.remove_context(client, "uno", target)
+    del ctx.storage.games[ctx.client.name, ctx.target]
+    ctx.remove_context("uno")
 
 
 @service.command(r"uno(?: (?P<set>.+))?", mention=True)
 @service.command(r"!uno(?: (?P<set>.+))?")
-def start_uno(client, target, origin, set=None):
+def start_uno(ctx, set=None):
     """
     Start game.
 
     Start a game of Uno.
     """
-    storage = service.storage_for(client.bot)
 
-    k = (client.name, target)
+    k = (ctx.client.name, ctx.target)
 
-    if k in storage.games:
-        client.message(target, "{origin}: A game is already in progress.".format(
-            origin=origin
-        ))
+    if k in ctx.storage.games:
+        ctx.respond(ctx._("A game is already in progress."))
         return
 
     if set is not None:
         try:
             set = Game.SETS[set.lower()]
         except:
-            client.message(target, "{origin}: I don't know what set \"{set}\" is.".format(
-                origin=origin,
+            ctx.respond(ctx._("I don't know what set \"{set}\" is.").format(
+                origin=ctx.origin,
                 set=set
             ))
             return
 
     g = Game(set)
-    g.join(origin)
-    storage.games[k] = g
+    g.join(ctx.origin)
+    ctx.storage.games[k] = g
 
-    client.message(target, "{origin} has started a game of Uno! Send !join to join, and !deal to deal when ready!".format(
-        origin=origin
+    ctx.message(ctx._("{origin} has started a game of Uno! Send !join to join, and !deal to deal when ready!").format(
+        origin=ctx.origin
     ))
 
-    service.add_context(client, "uno", target)
+    ctx.add_context("uno")
 
 
 @service.command(r"!stop")
 @requires_context("uno")
-def stop_uno(client, target, origin):
+def stop_uno(ctx):
     """
     Stop game.
 
     Stop the Uno game in progress.
     """
-    do_game_over(client, target)
+    do_game_over(ctx)
 
 
 @service.command(r"!join")
 @requires_context("uno")
-def join_uno(client, target, origin):
+def join_uno(ctx):
     """
     Join game.
 
     Join an Uno game in progress.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin in game.players:
-        client.message(target, "{origin}: You're already in the game.".format(
-            origin=origin
-        ))
+    if ctx.origin in game.players:
+        ctx.respond(ctx._("You're already in the game."))
         return
 
-    game.join(origin)
+    game.join(ctx.origin)
 
-    client.message(target, "{origin} has joined the game!".format(
-        origin=origin
+    ctx.message(ctx._("{origin} has joined the game!").format(
+        origin=ctx.origin
     ))
 
 
 @service.command(r"!deal")
 @requires_context("uno")
-def deal_uno(client, target, origin):
+def deal_uno(ctx):
     """
     Deal for game.
 
     Deal cards to players in game.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
     if game.started:
-        client.message(target, "{origin}: This game is already in progress.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("This game is already in progress."))
         return
 
     if len(game.players) < 2:
-        client.message(target, "{origin}: There aren't enough players to deal yet.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("There aren't enough players to deal yet."))
         return
 
-    client.message(target, "The game has started! Players: {players}".format(
+    ctx.message(ctx._("The game has started! Players: {players}").format(
         players=", ".join(game.players.keys())
     ))
     game.start()
 
-    send_summary(client, target, game)
+    send_summary(ctx, game)
     for player in game.players.keys():
-        send_hand(client, target, player, game)
+        send_hand(ctx, player, game)
 
 
 @service.command(r"!play (?P<raw_card>\S+)(?: (?P<target_color>.))?")
 @requires_context("uno")
-def play_card(client, target, origin, raw_card, target_color=None):
+def play_card(ctx, raw_card, target_color=None):
     """
     Play card.
 
     Play an Uno card for the in-progress game.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    if origin != game.turn:
-        client.message(target, "{origin}: It's not your turn.".format(
-            origin=origin
-        ))
+    if ctx.origin != game.turn:
+        ctx.respond(ctx._("It's not your turn."))
         return
 
     try:
         card = Game.read_card(raw_card)
     except ValueError:
-        client.message(target, "{origin}: I don't know what card that is.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("I don't know what card that is."))
         return
 
     color, rank = card
 
     if target_color is not None and color != Game.WILD:
-        client.message(target, "{origin}: This isn't a wild card, dumbass.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("That's not a wild card, dumbass."))
         return
 
     if target_color is None and color == Game.WILD:
-        client.message(target, "{origin}: You need to give me a color to change to, e.g.: !play wd4 r".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("You need to give me a color to change to, e.g.: !play wd4 r"))
         return
 
     last_turn = game.turn
@@ -460,111 +434,93 @@ def play_card(client, target, origin, raw_card, target_color=None):
         }.get(target_color))
     except UnoStateError as e:
         if e.code == UnoStateError.CARD_NOT_COMPATIBLE:
-            client.message(target, "{origin}: You can't play that card right now.".format(
-                origin=origin
-            ))
+            ctx.respond(ctx._("You can't play that card right now."))
             return
         elif e.code == UnoStateError.NOT_IN_HAND:
-            client.message(target, "{origin}: You don't have that card.".format(
-                origin=origin
-            ))
+            ctx.respond(ctx._("You don't have that card."))
             return
     except ValueError:
-        client.message(target, "{origin}: That's not a valid target color.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("That's not a valid target color."))
         return
 
     if game_over:
-        do_game_over(client, target)
+        do_game_over(ctx)
         return
 
     if len(game.players[last_turn]) == 1:
-        client.message(target, "{player} has UNO!".format(
+        ctx.message(ctx._("{player} has UNO!").format(
             player=last_turn
         ))
 
     prefix = ""
 
     if rank == Game.REVERSE:
-        prefix = "Order reversed! "
+        prefix = ctx._("Order reversed! ")
     elif rank == Game.DRAW_TWO:
-        prefix = "Draw two! "
+        prefix = ctx._("Draw two! ")
     elif rank == Game.DRAW_FOUR:
-        prefix = "Draw four! "
+        prefix = ctx._("Draw four! ")
+    elif rank == Game.SKIP and game.must_draw == 0:
+        prefix = ctx._("{player} was skipped! ").format(player=usual_turn)
     elif rank == Game.SKIP:
-        prefix = "{} was skipped! ".format(usual_turn)
+        prefix = ctx._("{player} passed the stack on! ").format(player=last_turn)
 
-    send_summary(client, target, game, prefix)
-    send_hand(client, target, game.turn, game)
+    send_summary(ctx, game, prefix)
+    send_hand(ctx, game.turn, game)
 
 
 @service.command(r"!draw")
 @requires_context("uno")
-def draw(client, target, origin):
+def draw(ctx):
     """
     Draw.
 
     Draw a card from the pile.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    if origin != game.turn:
-        client.message(target, "{origin}: It's not your turn.".format(
-            origin=origin
-        ))
+    if ctx.origin != game.turn:
+        ctx.respond(ctx._("It's not your turn."))
         return
 
     try:
         card = game.turn_draw()
     except UnoStateError as e:
         if e.code == UnoStateError.HAS_ALREADY_DRAWN:
-            client.message(target, "{origin}: You've already drawn.".format(
-                origin=origin
-            ))
+            ctx.respond(ctx._("You've already drawn."))
             return
         elif e.code == UnoStateError.NO_MORE_DRAWS:
-            do_game_over(client, target, "Looks like the pile ran out! ")
+            do_game_over(ctx, ctx._("Looks like the pile ran out! "))
             return
         elif e.code == UnoStateError.MUST_STACK:
-            client.message(target, "{origin}: You need to stack a card.".format(
-                origin=origin
-            ))
+            ctx.respond(ctx._("You need to stack a card."))
             return
         raise
 
-    client.notice(origin, "[{}] Uno: You drew: {}".format(target, show_card_irc(card)))
-    client.message(target, "{origin} draws.".format(origin=origin))
+    ctx.client.notice(ctx.origin, ctx._("[{target}] Uno: You drew: {card}").format(target=ctx.target, card=show_card_irc(card)))
+    ctx.message(ctx._("{origin} draws.").format(origin=ctx.origin))
 
 
 @service.command(r"!pass")
 @requires_context("uno")
-def pass_(client, target, origin):
+def pass_(ctx):
     """
     Pass.
 
     Pass, if a card has been drawn.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    if origin != game.turn:
-        client.message(target, "{origin}: It's not your turn.".format(
-            origin=origin
-        ))
+    if ctx.origin != game.turn:
+        ctx.respond(ctx._("It's not your turn."))
         return
 
     must_draw = game.must_draw
@@ -573,96 +529,90 @@ def pass_(client, target, origin):
         card = game.turn_pass()
     except UnoStateError as e:
         if e.code == UnoStateError.MUST_DRAW_FIRST:
-            client.message(target, "{origin}: You need to draw first.".format(
-                origin=origin
-            ))
+            ctx.respond(ctx._("You need to draw first."))
             return
         elif e.code == UnoStateError.NO_MORE_DRAWS:
-            do_game_over(client, target, "Looks like the pile ran out! ")
+            do_game_over(ctx, ctx._("Looks like the pile ran out! "))
             return
         raise
 
     suffix = ""
 
     if must_draw > 0:
-        suffix = " and had to draw {} cards".format(must_draw)
-        client.notice(origin, "[{}] Uno: You drew: {}"
-                            .format(target, " ".join(show_card_irc(card)
-                            for card in game.players[origin][-must_draw:])))
+        ctx.client.notice(ctx.origin, ctx._("[{target}] Uno: You drew: {card}").format(
+            target=ctx.target,
+            cards=" ".join(show_card_irc(card)
+                           for card in game.players[ctx.origin][-must_draw:])))
 
-    send_summary(client, target, game, "{origin} passed{suffix}. ".format(
-        origin=origin,
-        suffix=suffix
-    ))
-    send_hand(client, target, game.turn, game)
+    if must_draw > 0:
+        prefix = ctx._("{origin} passed and had to draw {num} cards.".format(
+            origin=ctx.origin,
+            num=must_draw
+        ))
+    else:
+        prefix = ctx._("{origin} passed.").format(origin=ctx.origin)
+
+    send_summary(ctx, game, prefix)
+    send_hand(ctx, game.turn, game)
 
 
 @service.command(r"!hand")
 @requires_context("uno")
-def show_hand(client, target, origin):
+def show_hand(ctx):
     """
     Show hand.
 
     List cards in hand.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    send_hand(client, target, origin, game)
+    send_hand(ctx, ctx.origin, game)
 
 
 @service.command(r"!scores")
 @requires_context("uno")
-def show_hand(client, target, origin):
+def show_hand(ctx):
     """
     Show scores.
 
     Show scores for all players.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    client.message(target, "Standings: {scores}".format(scores=show_scores(game)))
+    ctx.message(ctx._("Standings: {scores}").format(scores=show_scores(game)))
 
 
 @service.command(r"!leave")
 @requires_context("uno")
-def leave(client, target, origin):
+def leave(ctx):
     """
     Leave game.
 
     Leave the game, if you're participating.
     """
-    storage = service.storage_for(client.bot)
-    game = storage.games[client.name, target]
+    game = ctx.storage.games[ctx.client.name, ctx.target]
 
-    if origin not in game.players:
-        client.message(target, "{origin}: You're not in this game.".format(
-            origin=origin
-        ))
+    if ctx.origin not in game.players:
+        ctx.respond(ctx._("You're not in this game."))
         return
 
-    game_over = game.leave(origin)
+    game_over = game.leave(ctx.origin)
 
     if game_over:
-        do_game_over(client, target)
+        do_game_over(ctx)
         return
 
-    client.message(target, "{origin} left the game. Their cards were shuffled back into the pile.".format(
-        origin=origin
+    ctx.message(ctx._("{origin} left the game. Their cards were shuffled back into the pile.").format(
+        origin=ctx.origin
     ))
 
     if game.started:
-        send_summary(client, target, game)
+        send_summary(ctx, game)

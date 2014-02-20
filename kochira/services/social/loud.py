@@ -36,7 +36,7 @@ def is_shout(text):
 
 
 @service.command(r"who(?:'s| is| are|'re)(?: the loudest|loud)(?: .+)?\??$", mention=True)
-def loudest(client, target, origin):
+def loudest(ctx):
     """
     Loudest users.
 
@@ -51,12 +51,9 @@ def loudest(client, target, origin):
     ]
 
     if not loudest:
-        client.message(target, "{origin}: Nobody has shouted yet.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("Nobody has shouted yet."))
     else:
-        client.message(target, "{origin}: Loudest people: {loudest}.".format(
-            origin=origin,
+        ctx.respond(ctx._("Loudest people: {loudest}.").format(
             loudest=", ".join("{who} from {network} ({count} shout{s})".format(
                 who=who,
                 network=network,
@@ -68,7 +65,7 @@ def loudest(client, target, origin):
 
 @service.command(r"who said that\??$", mention=True)
 @service.command(r"what was the context of that\??$", mention=True)
-def who_said_that(client, target, origin):
+def who_said_that(ctx):
     """
     Who said that?
 
@@ -76,23 +73,20 @@ def who_said_that(client, target, origin):
     """
 
     shouts = {line.strip(): i
-              for i, (who, line) in enumerate(client.backlogs[target])
-              if is_shout(line) and who == client.nickname}
+              for i, (who, line) in enumerate(ctx.client.backlogs[ctx.target])
+              if is_shout(line) and who == ctx.client.nickname}
 
     q = list(Shout.select() \
         .where((Shout.message << list(shouts.keys())) if shouts else False))
 
     if not q:
-        client.message(target, "{origin}: Er, nobody said that.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("Er, nobody said that."))
         return
 
     q.sort(key=lambda shout: shouts[shout.message])
 
-    client.message(target, "{origin}: {shouts}.".format(
-        origin=origin,
-        shouts=", ".join("{who} from {network} said \"{what}\"".format(
+    ctx.respond(ctx._("{shouts}.").format(
+        shouts=", ".join(ctx._("{who} from {network} said \"{what}\"").format(
             who=shout.who,
             network=shout.network,
             what=shout.message
@@ -104,7 +98,7 @@ def who_said_that(client, target, origin):
 @service.command(r"how many times have people shouted\??", mention=True)
 @service.command(r"how many times has (?P<who>\S+) shouted\??", mention=True)
 @service.command(r"how loud is (?P<who>\S+)\??", mention=True)
-def how_many_shouts(client, target, origin, who=None):
+def how_many_shouts(ctx, who=None):
     """
     Number of shouts.
 
@@ -114,16 +108,18 @@ def how_many_shouts(client, target, origin, who=None):
 
     if who is None:
         num = Shout.select().count()
-        client.message(target, "{origin}: People have shouted {num} time{s}.".format(
-            origin=origin,
+        ctx.respond(ctx.ngettext("People have shouted {num} time.",
+                                 "People have shouted {num} times.",
+                                 num).format(
             num=num,
             s="s" if num != 1 else ""
         ))
     else:
         num = Shout.select().where(Shout.who == who,
-                                   Shout.network == client.network).count()
-        client.message(target, "{origin}: {who} has shouted {num} time{s}.".format(
-            origin=origin,
+                                   Shout.network == ctx.client.network).count()
+        ctx.respond(ctx.ngettext("{who} has shouted {num} time.",
+                                 "{who} has shouted {num} times.",
+                                 num).format(
             who=who,
             num=num,
             s="s" if num != 1 else ""
@@ -131,16 +127,14 @@ def how_many_shouts(client, target, origin, who=None):
 
 
 @service.hook("channel_message")
-def record_or_play_shout(client, target, origin, message):
-    storage = service.storage_for(client.bot)
-
+def record_or_play_shout(ctx, target, origin, message):
     message = message.strip()
 
     if not is_shout(message):
         return
 
     if not Shout.select().where(Shout.message == message).exists():
-        Shout.create(who=origin, network=client.network,
+        Shout.create(who=ctx.origin, network=ctx.client.network,
                      message=message).save()
 
     q = Shout.select().where(Shout.message != message) \
@@ -149,5 +143,4 @@ def record_or_play_shout(client, target, origin, message):
 
     if q.exists():
         shout = q[0]
-        client.message(target, shout.message)
-        storage.last_shout = shout
+        ctx.message(shout.message)

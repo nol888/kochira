@@ -12,7 +12,7 @@ import subprocess
 
 from kochira import config
 from kochira.auth import requires_permission
-from kochira.service import Service, Config
+from kochira.service import Service, Config, HookContext
 
 from tornado.web import Application, RequestHandler, asynchronous, HTTPError
 
@@ -55,8 +55,8 @@ def get_log(from_rev, to_rev):
     if p.returncode != 0:
         raise UpdateError("git log failed")
 
-    return reversed(line for line in out.decode("utf-8").rstrip("\n").split("\n")
-                    if line)
+    return reversed([line for line in out.decode("utf-8").rstrip("\n").split("\n")
+                     if line])
 
 
 def do_update(remote, branch):
@@ -72,38 +72,34 @@ def do_update(remote, branch):
 
 @service.command(r"(?:windows )?update(?:s)?!?$", mention=True, allow_private=True)
 @requires_permission("admin")
-def update(client, target, origin):
+def update(ctx):
     """
     Update.
 
     Update the bot by pulling from the latest Git master.
     """
 
-    config = service.config_for(client.bot)
-
-    client.message(target, "Checking for updates...")
+    ctx.respond(ctx._("Checking for updates..."))
 
     try:
         head = rev_parse("HEAD")
 
-        if not do_update(config.remote, config.branch):
-            client.message(target, "No updates.")
+        if not do_update(ctx.config.remote, ctx.config.branch):
+            ctx.respond(ctx._("No updates."))
             return
 
         for line in get_log(head, "HEAD"):
-            client.message(target, line)
+            ctx.respond(line)
     except UpdateError as e:
-        client.message(target, "Update failed! " + str(e))
+        ctx.respond(ctx._("Update failed! {error}").format(error=e))
     else:
-        client.message(target, "Update finished!")
+        ctx.respond(ctx._("Update finished!"))
 
 
 class PostReceiveHandler(RequestHandler):
     @asynchronous
     def post(self):
-        config = service.config_for(self.application.bot)
-
-        if self.get_query_argument("key") != config.post_receive_key:
+        if self.get_query_argument("key") != self.application.ctx.config.post_receive_key:
             raise HTTPError(403)
 
         def _callback(future):
@@ -112,22 +108,23 @@ class PostReceiveHandler(RequestHandler):
                 raise future.exception()
             self.finish()
 
-            for client_name, client in self.application.bot.clients.items():
+            for client_name, client in self.application.ctx.bot.clients.items():
                 for channel in client.channels:
-                    config = service.config_for(self.application.bot,
-                                                client_name, channel)
+                    c_ctx = HookContext(service, self.application.ctx.bot, client.name, channel)
 
-                    if not config.announce:
+                    if not c_ctx.config.announce:
                         continue
 
                     for line in get_log(head, "HEAD"):
-                        client.notice(channel, "Update! {}".format(line))
+                        client.notice(channel, self.application.ctx._("Update! {line}").format(
+                            line=line
+                        ))
 
         head = rev_parse("HEAD")
 
-        self.application.bot.executor.submit(do_update,
-                                             config.remote,
-                                             config.branch) \
+        self.application.ctx.bot.executor.submit(do_update,
+                                                 self.application.ctx.config.remote,
+                                                 self.application.ctx.config.branch) \
             .add_done_callback(_callback)
 
 
@@ -138,10 +135,8 @@ def make_application(settings):
 
 
 @service.hook("services.net.webserver")
-def webserver_config(bot):
-    config = service.config_for(bot)
-
-    if config.post_receive_key is None:
+def webserver_config(ctx):
+    if ctx.config.post_receive_key is None:
         return None
 
     return {

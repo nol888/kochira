@@ -53,13 +53,6 @@ class Quote(Model):
     ts = DateTimeField()
 
     @property
-    def as_text(self):
-        return "Quote {id}: {quote}".format(
-            id=self.id,
-            quote=self.quote
-        )
-
-    @property
     def quote_with_newlines(self):
         text = self.quote
         text = re.sub(r"(?:^| )(\[?(?:(?:(?:\d\d)?\d\d-\d\d-\d\d )?\d\d:\d\d(?::\d\d)?\]? )?(?:< ?[!~&@%+]?[A-Za-z0-9{}\[\]|^`\\_-]+>|\* |-!-))", "\n\\1", text)
@@ -73,21 +66,16 @@ class Quote(Model):
 
 
 @service.setup
-def initialize_model(bot):
-    config = service.config_for(bot)
-    storage = service.storage_for(bot)
-
-    if not whoosh.index.exists_in(config.index_path):
-        storage.index = whoosh.index.create_in(config.index_path, WHOOSH_SCHEMA)
+def initialize_model(ctx):
+    if not whoosh.index.exists_in(ctx.config.index_path):
+        ctx.storage.index = whoosh.index.create_in(ctx.config.index_path, WHOOSH_SCHEMA)
     else:
-        storage.index = whoosh.index.open_dir(config.index_path)
+        ctx.storage.index = whoosh.index.open_dir(ctx.config.index_path)
 
-    storage.quote_qp = QueryParser("quote", schema=WHOOSH_SCHEMA)
+    ctx.storage.quote_qp = QueryParser("quote", schema=WHOOSH_SCHEMA)
 
 
-def _add_quote(bot, network, channel, origin, quote):
-    storage = service.storage_for(bot)
-
+def _add_quote(storage, network, channel, origin, quote):
     with database.transaction():
         quote = Quote.create(by=origin, quote=quote, channel=channel,
                              network=network, ts=datetime.utcnow())
@@ -103,24 +91,21 @@ def _add_quote(bot, network, channel, origin, quote):
 
 @service.command(r"add quote (?P<quote>.+)$", mention=True)
 @service.command(r"!quote add (?P<quote>.+)$")
-def add_quote(client, target, origin, quote):
+def add_quote(ctx, quote):
     """
     Add quote.
 
     Add the given quote to the database.
     """
 
-    quote = _add_quote(client.bot, client.network, target, origin, quote)
+    quote = _add_quote(ctx.storage, ctx.client.network, ctx.target, ctx.origin, quote)
 
-    client.message(target, "{origin}: Added quote {qid}.".format(
-        origin=origin,
+    ctx.respond(ctx._("Added quote {qid}.").format(
         qid=quote.id
     ))
 
 
-def _delete_quote(bot, qid):
-    storage = service.storage_for(bot)
-
+def _delete_quote(storage, qid):
     with database.transaction():
         Quote.delete().where(Quote.id == qid).execute()
         storage.index.delete_by_term("id", qid)
@@ -130,7 +115,7 @@ def _delete_quote(bot, qid):
 @service.command(r"(?:destroy|remove|delete) quote (?P<qid>\d+)$", mention=True)
 @service.command(r"!quote del (?P<qid>\d+)$")
 @requires_permission("quote")
-def delete_quote(client, target, origin, qid: int):
+def delete_quote(ctx, qid: int):
     """
     Delete quote.
 
@@ -139,32 +124,22 @@ def delete_quote(client, target, origin, qid: int):
 
     if not Quote.select() \
         .where(Quote.id == qid,
-               Quote.network == client.network,
-               Quote.channel == target).exists():
-        client.message(target, "{origin}: That's not a quote.".format(
-            origin=origin
-        ))
+               Quote.network == ctx.client.network,
+               Quote.channel == ctx.target).exists():
+        ctx.respond(ctx._("That's not a quote."))
         return
 
-    _delete_quote(client.bot, qid)
+    _delete_quote(ctx.storage, qid)
 
-    client.message(target, "{origin}: Deleted quote {qid}.".format(
-        origin=origin,
+    ctx.respond(ctx._("Deleted quote {qid}.").format(
         qid=qid
     ))
-
-
-def _read_quote(bot, qid):
-    try:
-        return Quote.get(Quote.id == qid)
-    except Quote.DoesNotExist:
-        return None
 
 
 @service.command(r"what is quote (?P<qid>\d+)\??$", mention=True)
 @service.command(r"read quote (?P<qid>\d+)$", mention=True)
 @service.command(r"!quote read (?P<qid>\d+)$")
-def read_quote(client, target, origin, qid: int):
+def read_quote(ctx, qid: int):
     """
     Read quote.
 
@@ -175,22 +150,20 @@ def read_quote(client, target, origin, qid: int):
         .where(Quote.id == qid)
 
     if not q.exists():
-        client.message(target, "{origin}: That's not a quote.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("That's not a quote."))
         return
 
     quote = q[0]
 
-    client.message(target, "{origin}: {quote}".format(
-        origin=origin,
-        quote=quote.as_text
+    ctx.respond(ctx._("Quote {id}: {text}").format(
+        id=quote.id,
+        text=quote.quote
     ))
 
 
 @service.command(r"(?:give me a )?random quote(?: matching (?P<query>.+))?$", mention=True)
 @service.command(r"!quote rand(?: (?P<query>.+))?$")
-def rand_quote(client, target, origin, query=None):
+def rand_quote(ctx, query=None):
     """
     Random quote.
 
@@ -199,7 +172,7 @@ def rand_quote(client, target, origin, query=None):
     """
 
     if query is not None:
-        q = _find_quotes(client.bot, query)
+        q = _find_quotes(ctx.storage, query)
     else:
         q = Quote.select()
 
@@ -208,22 +181,18 @@ def rand_quote(client, target, origin, query=None):
         .limit(1)
 
     if not q.exists():
-        client.message(target, "{origin}: Couldn't find any quotes.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("Couldn't find any quotes."))
         return
 
     quote = q[0]
 
-    client.message(target, "{origin}: {quote}".format(
-        origin=origin,
-        quote=quote.as_text
+    ctx.respond(ctx._("Quote {id}: {text}").format(
+        id=quote.id,
+        text=quote.quote
     ))
 
 
-def _find_quotes(bot, query):
-    storage = service.storage_for(bot)
-
+def _find_quotes(storage, query):
     q = storage.quote_qp.parse(query)
 
     with storage.index.searcher() as searcher:
@@ -236,29 +205,26 @@ def _find_quotes(bot, query):
 
 @service.command(r"find (?:a )?quote matching (?P<query>.+)$", mention=True)
 @service.command(r"!quote find (?P<query>.+)$")
-def find_quote(client, target, origin, query):
+def find_quote(ctx, query):
     """
     Find quote.
 
     Full-text search for a given quote.
     """
-    quotes = list(_find_quotes(client.bot, query))
+    quotes = list(_find_quotes(ctx.storage, query))
 
     if not quotes:
-        client.message(target, "{origin}: Couldn't find any quotes.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("Couldn't find any quotes."))
     elif len(quotes) == 1:
-        client.message(target, "{origin}: {quote}".format(
-            origin=origin,
-            quote=quotes[0].as_text
+        ctx.respond(ctx._("Quote {id}: {text}").format(
+            id=quotes[0].id,
+            text=quotes[0].text
         ))
     else:
         qids = [quote.id for quote in quotes]
         qids.sort()
 
-        client.message(target, "{origin}: Found {num} quotes: {qids}".format(
-            origin=origin,
+        ctx.respond(ctx._("Found {num} quotes: {qids}").format(
             num=len(qids),
             qids=", ".join(str(qid) for qid in qids)
         ))
@@ -279,7 +245,7 @@ class IndexHandler(RequestHandler):
         query = self.get_argument("q", "")
 
         if query:
-            q = _find_quotes(self.application.bot, query)
+            q = _find_quotes(self.application.ctx.storage, query)
         else:
             q = Quote.select()
 
@@ -300,7 +266,7 @@ def make_application(settings):
 
 
 @service.hook("services.net.webserver")
-def webserver_config(bot):
+def webserver_config(ctx):
     return {
         "name": "quotes",
         "title": "Quotes",

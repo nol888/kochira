@@ -8,7 +8,8 @@ server.
 from docutils.core import publish_parts
 
 from kochira import config
-from kochira.service import Service, Config
+from kochira.service import Service, Config, HookContext
+
 import os
 import subprocess
 
@@ -30,24 +31,27 @@ class Config(Config):
 
 def _get_application_confs(bot):
     for hook in bot.get_hooks("services.net.webserver"):
-        conf = hook(bot)
+        conf = hook(HookContext(hook.service, bot))
 
         if conf:
-            yield conf
+            yield hook.service, conf
 
 
 class MainHandler(RequestHandler):
     def _get_application_factory(self, name):
-        for conf in _get_application_confs(self.application.bot):
+        for service, conf in _get_application_confs(self.application._ctx.bot):
             if conf["name"] == name:
-                return conf["application_factory"]
+                return service, conf["application_factory"]
 
         raise HTTPError(404)
 
     def _run_request(self, name, url):
-        application = self._get_application_factory(name)(self.settings)
+        service, application_factory = self._get_application_factory(name)
+
+        application = application_factory(self.settings)
+        application._ctx = self.application._ctx
+        application.ctx = HookContext(service, self.application._ctx.bot)
         application.name = name
-        application.bot = self.application.bot
 
         uri = self.request.uri[len(name) + 1:]
 
@@ -75,11 +79,9 @@ class MainHandler(RequestHandler):
 
 class IndexHandler(RequestHandler):
     def get(self):
-        config = service.config_for(self.application.bot)
-
         self.render("index.html",
-                    motd=publish_parts(config.motd, writer_name="html", settings_overrides={"initial_header_level": 2})["fragment"],
-                    clients=sorted(self.application.bot.clients.items()))
+                    motd=publish_parts(self.application._ctx.config.motd, writer_name="html", settings_overrides={"initial_header_level": 2})["fragment"],
+                    clients=sorted(self.application._ctx.bot.clients.items()))
 
 class NotFoundHandler(RequestHandler):
     def get(self):
@@ -89,19 +91,15 @@ class NotFoundHandler(RequestHandler):
 
 class TitleModule(UIModule):
     def render(self):
-        config = service.config_for(self.handler.application.bot)
-
         return self.render_string("_modules/title.html",
-                                  title=config.title)
+                                  title=self.handler.application._ctx.config.title)
 
 class NavBarModule(UIModule):
     def render(self):
-        config = service.config_for(self.handler.application.bot)
-
         return self.render_string("_modules/navbar.html",
-                                  title=config.title,
+                                  title=self.handler.application._ctx.config.title,
                                   name=self.handler.application.name,
-                                  confs=_get_application_confs(self.handler.application.bot))
+                                  confs=[conf for _, conf in _get_application_confs(self.handler.application._ctx.bot)])
 
 
 class FooterModule(UIModule):
@@ -149,11 +147,8 @@ base_path = os.path.join(os.path.dirname(__file__), "webserver")
 
 
 @service.setup
-def setup_webserver(bot):
-    config = service.config_for(bot)
-    storage = service.storage_for(bot)
-
-    storage.application = Application([
+def setup_webserver(ctx):
+    ctx.storage.application = Application([
         (r"/", IndexHandler),
         (r"/(\S+)/(.*)", MainHandler),
         (r".*", NotFoundHandler)
@@ -168,22 +163,24 @@ def setup_webserver(bot):
             "Footer": FooterModule
         }
     )
-    storage.application.bot = bot
-    storage.application.name = None
+    ctx.storage.application._ctx = HookContext(service, ctx.bot)
+    ctx.storage.application.name = None
 
-    @bot.event_loop.schedule
+    @ctx.bot.event_loop.schedule
     def _callback():
-        storage.http_server = HTTPServer(storage.application,
-                                         io_loop=bot.event_loop.io_loop)
-        storage.http_server.listen(config.port, config.address)
+        ctx.storage.http_server = HTTPServer(ctx.storage.application,
+                                             io_loop=ctx.bot.event_loop.io_loop)
+        ctx.storage.http_server.listen(ctx.config.port, ctx.config.address)
         service.logger.info("web server ready")
 
 
 @service.shutdown
-def shutdown_webserver(bot):
-    storage = service.storage_for(bot)
+def shutdown_webserver(ctx):
+    # we have to do this because the service will be unloaded on the next
+    # scheduler tick
+    storage = ctx.storage
 
-    @bot.event_loop.schedule
+    @ctx.bot.event_loop.schedule
     def _callback():
         storage.http_server.stop()
         service.logger.info("web server stopped")

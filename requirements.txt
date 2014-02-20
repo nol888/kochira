@@ -1,4 +1,4 @@
-pydle
+git+https://github.com/Shizmob/pydle
 peewee
 pyyaml
 requests
@@ -9,11 +9,10 @@ whoosh
 pillow
 humanize
 BeautifulSoup4
-pyzmq
 pure-sasl
 docutils
 tornado
 twitter
 pathlib
-pyenchant
+git+https://github.com/rfk/pyenchant
 textblob

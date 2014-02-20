@@ -1,23 +1,20 @@
 """
-Google web search.
+Google Image search.
 
-Run queries on Google and return results.
+Find image results
 """
 
 import requests
-from html.parser import HTMLParser
 
 from kochira.service import Service, background
 
 service = Service(__name__, __doc__)
 
-html_parser = HTMLParser()
 
-
-@service.command(r"!g (?P<term>.+?)(?: (?P<num>\d+))?$")
-@service.command(r"(?:search|google)(?: for)? (?P<term>.+?)(?: \((?P<num>\d+)\))?\??$", mention=True)
+@service.command(r"!image (?P<term>.+?)(?: (?P<num>\d+))?$")
+@service.command(r"image(?: for)? (?P<term>.+?)(?: \((?P<num>\d+)\))?\??$", mention=True)
 @background
-def search(ctx, term, num: int=None):
+def image(ctx, term, num: int=None):
     """
     Google.
 
@@ -26,8 +23,9 @@ def search(ctx, term, num: int=None):
     """
 
     r = requests.get(
-        "https://ajax.googleapis.com/ajax/services/search/web",
+        "https://ajax.googleapis.com/ajax/services/search/images",
         params={
+            "safe": "off",
             "v": "1.0",
             "q": term
         }
@@ -49,8 +47,7 @@ def search(ctx, term, num: int=None):
         ctx.respond(ctx._("Couldn't find anything matching \"{term}\".").format(term=term))
         return
 
-    ctx.respond(ctx._("{title}: {url} ({num} of {total})").format(
-        title=html_parser.unescape(results[num]["titleNoFormatting"]),
+    ctx.respond(ctx._("{url} ({num} of {total})").format(
         url=results[num]["unescapedUrl"],
         num=num + 1,
         total=total

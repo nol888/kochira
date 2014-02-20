@@ -4,6 +4,7 @@ import collections
 import functools
 import imp
 import importlib
+import locale
 import heapq
 import logging
 import multiprocessing
@@ -18,7 +19,7 @@ from .client import Client
 from .db import database
 from .scheduler import Scheduler
 from .util import Expando
-from .service import Service, BoundService, Config as ServiceConfig
+from .service import Service, BoundService, HookContext, Config as ServiceConfig
 from .userdata import UserDataKVPair
 
 from kochira import services
@@ -63,6 +64,8 @@ class ServiceConfigLoader(collections.Mapping):
 
 
 def _config_class_factory(bot):
+    lang, _ = locale.getdefaultlocale()
+
     service_config_loader = functools.partial(ServiceConfigLoader, bot)
     service_config_loader.get_default = lambda: {}
 
@@ -96,6 +99,7 @@ def _config_class_factory(bot):
                 password = config.Field(doc="Password for the channel, if any.", default=None)
                 services = config.Field(doc="Mapping of per-channel service settings.", type=service_config_loader)
                 acl = config.Field(doc="Mapping of per-channel access control lists.", type=config.Mapping(config.Many(str, is_set=True)))
+                locale = config.Field(doc="Per-channel locale.", default=None)
 
             tls = config.Field(doc="TLS settings.", type=TLS, default=TLS())
             sasl = config.Field(doc="SASL settings.", type=SASL, default=SASL())
@@ -103,12 +107,15 @@ def _config_class_factory(bot):
             channels = config.Field(doc="Mapping of channel settings.", type=config.Mapping(Channel))
             services = config.Field(doc="Mapping of per-client service settings.", type=service_config_loader)
             acl = config.Field(doc="Mapping of per-client access control lists.", type=config.Mapping(config.Many(str, is_set=True)))
+            locale = config.Field(doc="Per-network locale.", default=None)
 
         class Core(config.Config):
             database = config.Field(doc="Database file to use", default="kochira.db")
             max_backlog = config.Field(doc="Maximum backlog lines to store.", default=10)
             max_workers = config.Field(doc="Max thread pool workers.", default=0)
             version = config.Field(doc="CTCP VERSION reply.", default="kochira IRC bot")
+            locale_path = config.Field(doc="Path to locales.", default="/usr/share/locale")
+            locale = config.Field(doc="Locale to use.", default=lang)
 
         core = config.Field(doc="Core configuration settings.", type=Core)
         clients = config.Field(doc="Clients to connect.", type=config.Mapping(Network))
@@ -130,6 +137,8 @@ class Bot:
         self.config_class = _config_class_factory(self)
         self.config_file = config_file
 
+        self.stopping = False
+
         self.rehash()
         self._connect_to_db()
 
@@ -141,6 +150,17 @@ class Bot:
 
         self._load_services()
         self._connect_to_irc()
+
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
+        signal.signal(signal.SIGINT, self._handle_sigterm)
+
+        self.event_loop.run()
+
+    def stop(self):
+        self.stopping = True
+        self.event_loop.stop()
+        for service in list(self.services.keys()):
+            self.unload_service(service)
 
     def connect(self, name):
         client = Client.from_config(self, name,
@@ -159,7 +179,7 @@ class Bot:
 
     def _connect_to_db(self):
         db_name = self.config.core.database
-        database.initialize(SqliteDatabase(db_name, check_same_thread=False))
+        database.initialize(SqliteDatabase(db_name, check_same_thread=True))
         logger.info("Opened database connection: %s", db_name)
         UserDataKVPair.create_table(True)
 
@@ -167,8 +187,6 @@ class Bot:
         for name, config in self.config.clients.items():
             if config.autoconnect:
                 self.connect(name)
-
-        self.event_loop.run()
 
     def _load_services(self):
         for service, config in self.config.services.items():
@@ -235,7 +253,7 @@ class Bot:
 
             service.run_setup(self)
         except:
-            logger.error("Couldn't load service %s", name, exc_info=True)
+            logger.exception("Couldn't load service %s", name)
             if service is not None:
                 del self.services[service.name]
             raise
@@ -256,7 +274,7 @@ class Bot:
             service.run_shutdown(self)
             del self.services[name]
         except:
-            logger.error("Couldn't unload service %s", name, exc_info=True)
+            logger.exception("Couldn't unload service %s", name)
             raise
 
     def get_hooks(self, hook):
@@ -275,12 +293,15 @@ class Bot:
         """
 
         for hook in self.get_hooks(hook):
+            ctx = HookContext(hook.service, self)
+
             try:
-                r = hook(*args, **kwargs)
+                r = hook(ctx, *args, **kwargs)
+
                 if r is Service.EAT:
                     return Service.EAT
             except BaseException:
-                logger.error("Hook processing failed", exc_info=True)
+                logger.exception("Hook processing failed")
 
     def rehash(self):
         """
@@ -296,6 +317,13 @@ class Bot:
         try:
             self.rehash()
         except Exception as e:
-            logger.error("Could not rehash configuration", exc_info=e)
+            logger.exception("Could not rehash configuration")
 
-        self.run_hooks("sighup", self)
+        self.run_hooks("sighup")
+
+    def _handle_sigterm(self, signum, frame):
+        if self.stopping:
+            raise KeyboardInterrupt
+
+        logger.info("Received termination signal; unloading all services")
+        self.stop()

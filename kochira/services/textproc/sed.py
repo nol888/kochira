@@ -11,9 +11,9 @@ from kochira.service import Service
 service = Service(__name__, __doc__)
 
 
-@service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)", eat=False, priority=-10)
-@service.command(r"(?P<who>.+?)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)", eat=False, priority=-10)
-def sed(client, target, origin, pattern, replacement, who=None, flags=None):
+@service.command(r"s(.)(?P<pattern>(?:[^\1]|\\1)+)\1(?P<replacement>(?:[^\1]|\\1)+)\1(?P<flags>[is]*)", eat=False)
+@service.command(r"(?P<who>.+?)[,;:]? s(.)(?P<pattern>(?:[^\2]|\\2)+)\2(?P<replacement>(?:[^\1]|\\2)+)\2(?P<flags>[is]*)", eat=False)
+def sed(ctx, pattern, replacement, who=None, flags=None):
     """
     Find and replace.
 
@@ -34,12 +34,10 @@ def sed(client, target, origin, pattern, replacement, who=None, flags=None):
     try:
         expr = re.compile(pattern, re_flags)
     except:
-        client.message(target, "{origin}: Couldn't parse that pattern.".format(
-            origin=origin
-        ))
+        ctx.respond(ctx._("Couldn't parse that pattern."))
         return
 
-    for other, message in list(client.backlogs.get(target, []))[1:]:
+    for other, message in list(ctx.client.backlogs.get(ctx.target, []))[1:]:
         if who is None or other == who:
             match = expr.search(message)
 
@@ -47,10 +45,8 @@ def sed(client, target, origin, pattern, replacement, who=None, flags=None):
                 try:
                     msg = expr.sub("\x1f" + replacement + "\x1f", message)
                 except:
-                    client.message(target, "{origin}: Couldn't parse that pattern.".format(
-                        origin=origin
-                    ))
+                    ctx.respond(ctx._("Couldn't parse that pattern."))
                     return
 
-                client.message(target, "<{who}> {message}".format(who=other, message=msg))
+                ctx.message("<{who}> {message}".format(who=other, message=msg))
                 break
