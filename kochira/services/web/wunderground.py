@@ -1,7 +1,7 @@
 """
 Weather Underground forecast.
 
-Get weather data from Weather Underground
+Get weather data from Weather Underground.
 """
 
 import requests
@@ -18,16 +18,6 @@ class Config(Config):
     api_key = config.Field(doc="Weather Underground API key.")
 
 
-def geocode(address):
-    return requests.get(
-        "https://maps.googleapis.com/maps/api/geocode/json",
-        params={
-            "address": address,
-            "sensor": "false"
-        }
-    ).json().get("results", [])
-
-
 @service.command(r"!weather(?: (?P<where>.+))?")
 @service.command(r"weather(?: (?:for|in) (?P<where>.+))?", mention=True)
 @background
@@ -38,28 +28,25 @@ def weather(ctx, where=None):
 
     Get the weather for a location.
     """
+
     if where is None:
-        try:
-            user_data = yield ctx.bot.defer_from_thread(UserData.lookup, ctx.client, ctx.origin)
-        except UserData.DoesNotExist:
-            user_data = {}
+        where = ctx.origin
 
-        if "location" not in user_data:
-            ctx.respond(ctx._("I don't have location data for you."))
-            return
-        location = user_data["location"]
-    else:
-        user_data = yield ctx.bot.defer_from_thread(UserData.lookup_default, ctx.client, where)
-        location = user_data.get("location")
+    try:
+        geocode = ctx.provider_for("geocode")
+    except KeyError:
+        ctx.respond(ctx._("Sorry, I don't have a geocode provider loaded."))
+        return
 
-        if location is None:
-            geocoded = geocode(where)
+    results = yield geocode(where)
 
-            if not geocoded:
-                ctx.respond(ctx._("I don't know where \"{where}\" is.").format(where=where))
-                return
+    if not results:
+        ctx.respond(ctx._("I don't know where \"{where}\" is.").format(
+            where=where
+        ))
+        return
 
-            location = geocoded[0]["geometry"]["location"]
+    location = results[0]["geometry"]["location"]
 
     r = requests.get("http://api.wunderground.com/api/{api_key}/conditions/q/{lat},{lng}.json".format(
         api_key=ctx.config.api_key,
@@ -73,7 +60,9 @@ def weather(ctx, where=None):
         return
 
     if "current_observation" not in r:
-        ctx.respond(ctx._("Couldn't find weather for \"{where}\".").format(where=where))
+        ctx.respond(ctx._("Couldn't find weather for \"{where}\".").format(
+            where=where
+        ))
         return
 
     observation = r["current_observation"]
@@ -95,7 +84,7 @@ def weather(ctx, where=None):
     precip = observation["precip_today_" + _unitize("metric", "in")]
     weather = observation["weather"]
 
-    ctx.respond(ctx._("Today's weather for {place} is: {weather}, {temp}° {cf} (feels like {feelslike}° {cf}), wind from {wind_dir} at {wind} {kphmph}, {humidity} humidity, {precip} {mmin} precipitation").format(
+    ctx.respond(ctx._("Today's weather for {place} is: {weather}, {temp} °{cf} (feels like {feelslike} °{cf}), wind from {wind_dir} at {wind} {kphmph}, {humidity} humidity, {precip} {mmin} precipitation").format(
         place=place,
         weather=weather,
         feelslike=feelslike,

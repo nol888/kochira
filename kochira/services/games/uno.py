@@ -257,7 +257,7 @@ def show_card_irc(card):
     }.get(rank, str(rank)) + "\x03"
 
 
-def show_scores(game):
+def show_scores(ctx, game):
     return ", ".join(ctx._("{player} ({num} cards)").format(player=k, num=len(v))
                      for k, v in game.scores())
 
@@ -282,7 +282,7 @@ def do_game_over(ctx, prefix=""):
     game = ctx.storage.games[ctx.client.name, ctx.target]
 
     ctx.message(prefix + ctx._("Game over! Final results: {results}").format(
-        results=show_scores(game)
+        results=show_scores(ctx, game)
     ))
     del ctx.storage.games[ctx.client.name, ctx.target]
     ctx.remove_context("uno")
@@ -539,7 +539,7 @@ def pass_(ctx):
     suffix = ""
 
     if must_draw > 0:
-        ctx.client.notice(ctx.origin, ctx._("[{target}] Uno: You drew: {card}").format(
+        ctx.client.notice(ctx.origin, ctx._("[{target}] Uno: You drew: {cards}").format(
             target=ctx.target,
             cards=" ".join(show_card_irc(card)
                            for card in game.players[ctx.origin][-must_draw:])))
@@ -587,7 +587,7 @@ def show_hand(ctx):
         ctx.respond(ctx._("You're not in this game."))
         return
 
-    ctx.message(ctx._("Standings: {scores}").format(scores=show_scores(game)))
+    ctx.message(ctx._("Standings: {scores}").format(scores=show_scores(ctx, game)))
 
 
 @service.command(r"!leave")
