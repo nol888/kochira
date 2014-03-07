@@ -100,6 +100,7 @@ def _config_class_factory(bot):
                 services = config.Field(doc="Mapping of per-channel service settings.", type=service_config_loader)
                 acl = config.Field(doc="Mapping of per-channel access control lists.", type=config.Mapping(config.Many(str, is_set=True)))
                 locale = config.Field(doc="Per-channel locale.", default=None)
+                block_services = config.Field(doc="List of services to block access to.", type=config.Many(str, is_set=True))
 
             tls = config.Field(doc="TLS settings.", type=TLS, default=TLS())
             sasl = config.Field(doc="SASL settings.", type=SASL, default=SASL())

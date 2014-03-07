@@ -131,6 +131,9 @@ class Client(_Client):
                 if not ctx.config.enabled:
                     continue
 
+                if target in self.config.channels and hook.service.name in self.config.channels[target].block_services:
+                    continue
+
                 try:
                     r = hook(ctx, *args, **kwargs)
 
