@@ -9,6 +9,7 @@ import os
 from pydle.async import coroutine, Future
 
 from .auth import has_permission, requires_permission
+from .userdata import UserData
 from . import config
 
 from .util import Expando
@@ -101,6 +102,11 @@ class HookContext:
                                          languages=languages)
         except IOError:
             self.t = gettext.NullTranslations()
+
+    def lookup_user_data(self, who=None):
+        if who is None:
+            who = self.origin
+        return UserData.lookup(self.client, who)
 
     def gettext(self, string):
         return self.t.gettext(string)
@@ -196,13 +202,14 @@ class Service:
 
                 # check if we're either being mentioned or being PMed
                 if mention and origin != target:
-                    first, _, rest = message.partition(" ")
-                    first = first.rstrip(",:")
+                    match = re.match(r"{}\W*\b(?P<rest>.+)".format(
+                        re.escape(ctx.client.nickname)
+                    ), message, re.IGNORECASE)
 
-                    if first.lower() != ctx.client.nickname.lower():
+                    if match is None:
                         return
 
-                    message = rest
+                    message = match.group("rest")
 
                 match = pat.match(message)
                 if match is None:

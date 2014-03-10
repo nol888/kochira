@@ -27,6 +27,7 @@ class Config(Config):
     address = config.Field(doc="Address to bind the HTTP server to.", default="0.0.0.0")
     title = config.Field(doc="Title for the web site.", default="Kobun")
     motd = config.Field(doc="MOTD for the web site, formatted in reStructuredText.", default="(no message of the day)")
+    base_url = config.Field(doc="Base URL for the web server.")
 
 
 def _get_application_confs(bot):
@@ -45,7 +46,7 @@ class MainHandler(RequestHandler):
 
         raise HTTPError(404)
 
-    def _run_request(self, name, url):
+    def _run_request(self, name):
         service, application_factory = self._get_application_factory(name)
 
         application = application_factory(self.settings)
@@ -80,8 +81,11 @@ class MainHandler(RequestHandler):
 class IndexHandler(RequestHandler):
     def get(self):
         self.render("index.html",
-                    motd=publish_parts(self.application._ctx.config.motd, writer_name="html", settings_overrides={"initial_header_level": 2})["fragment"],
+                    motd=publish_parts(self.application._ctx.config.motd,
+                                       writer_name="html",
+                                       settings_overrides={"initial_header_level": 2})["fragment"],
                     clients=sorted(self.application._ctx.bot.clients.items()))
+
 
 class NotFoundHandler(RequestHandler):
     def get(self):
@@ -93,6 +97,7 @@ class TitleModule(UIModule):
     def render(self):
         return self.render_string("_modules/title.html",
                                   title=self.handler.application._ctx.config.title)
+
 
 class NavBarModule(UIModule):
     def render(self):
@@ -150,7 +155,7 @@ base_path = os.path.join(os.path.dirname(__file__), "webserver")
 def setup_webserver(ctx):
     ctx.storage.application = Application([
         (r"/", IndexHandler),
-        (r"/(\S+)/(.*)", MainHandler),
+        (r"/(\S+)/.*", MainHandler),
         (r".*", NotFoundHandler)
     ],
         template_path=os.path.join(base_path, "templates"),

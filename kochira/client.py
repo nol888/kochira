@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 class Client(_Client):
-    RECONNECT_BACKOFF = [0, 5, 10, 20, 40, 80, 120]
+    RECONNECT_MAX_ATTEMPTS = None
+    context_factory = HookContext
 
     def __init__(self, bot, name, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -126,7 +127,7 @@ class Client(_Client):
                 kwargs = {}
 
             for hook in self.bot.get_hooks(name):
-                ctx = HookContext(hook.service, self.bot, self, target, origin)
+                ctx = self.context_factory(hook.service, self.bot, self, target, origin)
 
                 if not ctx.config.enabled:
                     continue
@@ -150,6 +151,8 @@ class Client(_Client):
                 exc = future.exception()
                 logger.error("Hook runner failed",
                              exc_info=(exc.__class__, exc, exc.__traceback__))
+
+        return fut
 
     def _add_to_backlog(self, target, by, message):
         backlog = self.backlogs.setdefault(target, deque([]))
@@ -202,7 +205,7 @@ class Client(_Client):
     def on_quit(self, user, message=None):
         self._run_hooks("quit", user, user, [user, message])
 
-    def on_ctcp(self, by, what, contents):
+    def on_ctcp(self, by, target, what, contents):
         self._run_hooks("ctcp", by, by, [by, what, contents])
 
     def on_ctcp_action(self, by, what, contents):

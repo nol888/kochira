@@ -11,10 +11,6 @@ from tornado.web import RequestHandler, Application, HTTPError, UIModule
 
 service = Service(__name__, __doc__)
 
-@service.config
-class Config(Config):
-    url = config.Field(doc="Base URL for the help documentation, e.g. ``http://example.com:8000/help``.")
-
 
 def rst(s, **kw):
     return publish_parts(s, writer_name="html", **kw)["fragment"]
@@ -139,5 +135,33 @@ def help(ctx):
         ctx.respond(ctx._("Help currently unavailable."))
     else:
         ctx.respond(ctx._("My help is available at {url}").format(
-            url=ctx.config.url
+            url=ctx.bot.config.services["kochira.services.net.webserver"].base_url.rstrip("/") + "/help/"
         ))
+
+
+@service.command(r"!source")
+@service.command(r"source", mention=True)
+@service.command(r"repo", mention=True)
+@service.command(r"github", mention=True)
+def show_source(ctx):
+    """
+    Show source.
+
+    Links the user to the source code repository.
+    """
+    ctx.respond(ctx._("My source code is at: https://github.com/rfw/kochira"))
+
+
+
+@service.command(r"!bugs")
+@service.command(r"report (?:a )?bug", mention=True)
+@service.command(r"bugs", mention=True)
+@service.command(r"u stink", mention=True)
+def bug_report(ctx):
+    """
+    Bug report.
+
+    Links the user to the bug report URL.
+    """
+    ctx.respond(ctx._("Found a bug? Report it! https://github.com/rfw/kochira/issues"))
+
