@@ -56,21 +56,21 @@ def remove_correction(ctx, what):
 
 
 def make_case_corrector(target):
-    def _closure(original):
+    def _closure(original, groups):
         if all(c.isupper() for c in original):
-            return target.upper()
+            return target.format(*groups).upper()
 
         if all(c.islower() for c in original):
-            return target.lower()
+            return target.format(*groups).lower()
 
         if original.title() == original:
-            return target.title()
+            return target.format(*groups).title()
 
         if original.capitalize() == original:
-            return target.capitalize()
+            return target.format(*groups).capitalize()
 
-        return target
-    return lambda match: _closure(match.group(0))
+        return target.format(*groups)
+    return lambda match: _closure(match.group(0), match.groups())
 
 
 @service.hook("channel_message")
