@@ -112,7 +112,7 @@ def check_badwords(ctx, target, origin, message):
         if is_regex(badword.word):
             expr = badword.word[1:-1]
         else:
-            expr = r"\b{}\b".format(re.escape(badword.word))
+            expr = r"\b{}\b".format(re.escape(sanitize(badword.word)))
 
         match = re.search(expr, sanitize(message), re.I)
         if match is not None:
