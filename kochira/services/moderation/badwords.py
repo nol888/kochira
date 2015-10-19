@@ -20,10 +20,11 @@ def is_regex(what):
     return what[0] == "/" and what[-1] == "/"
 
 CONTROL_CODE_RE = re.compile(
-    "\x1f|\x02|\x12|\x0f|\x16|\x03(?:\d{1,2}(?:,\d{1,2})?)?", re.UNICODE)
+    r"\x1f|\x02|\x12|\x0f|\x16|\x03(?:\d{1,2}(?:,\d{1,2})?)?", re.UNICODE)
+SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
 
-def strip_control_codes(s):
-    return CONTROL_CODE_RE.sub("", s)
+def sanitize(s):
+    return SPACE_RE.sub("", CONTROL_CODE_RE.sub("", s))
 
 @service.model
 class Badword(Model):
@@ -113,7 +114,7 @@ def check_badwords(ctx, target, origin, message):
         else:
             expr = r"\b{}\b".format(re.escape(badword.word))
 
-        match = re.search(expr, strip_control_codes(message), re.I)
+        match = re.search(expr, sanitize(message), re.I)
         if match is not None:
             op_modes = set(itertools.takewhile(lambda x: x != "v",
                                                ctx.client._nickname_prefixes.values()))
