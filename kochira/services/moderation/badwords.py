@@ -7,6 +7,7 @@ Kick people for using bad words.
 import confusables
 import re
 import itertools
+import unicodedata
 
 from peewee import CharField
 
@@ -25,7 +26,11 @@ CONTROL_CODE_RE = re.compile(
 SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
 
 def sanitize(s):
-    return SPACE_RE.sub("", CONTROL_CODE_RE.sub("", confusables.skeleton(s)))
+    s = SPACE_RE.sub("", s)
+    s = CONTROL_CODE_RE.sub("", s)
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
+    s = confusables.skeleton(s)
+    return s
 
 @service.model
 class Badword(Model):
