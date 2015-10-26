@@ -134,7 +134,7 @@ def check_badwords(ctx, target, origin, message):
             if ctx.client.nickname not in ops and ctx.config.chanserv_op is not None:
                 ctx.client.message("ChanServ", ctx.config.chanserv_op.format(
                                    target=ctx.target, me=ctx.client.nickname))
-                ctx.bot.event_loop.schedule(lambda: _callback(badword))
+                ctx.bot.event_loop.schedule(lambda: _callback(badword.word))
             else:
-                _callback(badword)
+                _callback(badword.word)
             return Service.EAT
