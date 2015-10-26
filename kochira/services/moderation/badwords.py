@@ -23,14 +23,14 @@ def is_regex(what):
 
 CONTROL_CODE_RE = re.compile(
     r"\x1f|\x02|\x12|\x0f|\x16|\x03(?:\d{1,2}(?:,\d{1,2})?)?", re.UNICODE)
-SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
+NON_ALPHANUMERIC_RE = re.compile(r"[^a-zA-Z0-9]", re.UNICODE)
 
 def sanitize(s):
     s = CONTROL_CODE_RE.sub("", s)
     s = s.casefold()
     s = unidecode.unidecode(s)
     s = confusables.skeleton(s)
-    s = SPACE_RE.sub("", s)
+    s = NON_ALPHANUMERIC_RE.sub("", s)
     return s
 
 @service.model
