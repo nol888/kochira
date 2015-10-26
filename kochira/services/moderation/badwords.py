@@ -4,6 +4,7 @@ Bad word filtering.
 Kick people for using bad words.
 """
 
+import confusables
 import re
 import itertools
 
@@ -24,7 +25,7 @@ CONTROL_CODE_RE = re.compile(
 SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
 
 def sanitize(s):
-    return SPACE_RE.sub("", CONTROL_CODE_RE.sub("", s))
+    return SPACE_RE.sub("", CONTROL_CODE_RE.sub("", confusables.skeleton(s)))
 
 @service.model
 class Badword(Model):
