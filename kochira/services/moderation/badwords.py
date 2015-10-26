@@ -83,7 +83,7 @@ def remove_badword(ctx, word):
     ctx.respond(ctx._("Okay, that's not a bad word anymore."))
 
 
-@service.command("(?:list )?bad words", mention=True)
+@service.command("(?:list )?bad words", mention=True, priority=2550)
 def list_badwords(ctx):
     """
     List bad words.
