@@ -23,7 +23,7 @@ def is_regex(what):
 
 CONTROL_CODE_RE = re.compile(
     r"\x1f|\x02|\x12|\x0f|\x16|\x03(?:\d{1,2}(?:,\d{1,2})?)?", re.UNICODE)
-SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
+SPACE_RE = re.compile(r"[^a-z0-9]", re.UNICODE | re.IGNORECASE)
 
 def sanitize(s):
     s = SPACE_RE.sub("", s)
