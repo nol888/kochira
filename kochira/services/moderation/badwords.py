@@ -30,6 +30,7 @@ def sanitize(s):
     s = CONTROL_CODE_RE.sub("", s)
     s = "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
     s = confusables.skeleton(s)
+    s = s.casefold()
     return s
 
 @service.model
