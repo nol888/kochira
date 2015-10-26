@@ -27,10 +27,10 @@ SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
 
 def sanitize(s):
     s = CONTROL_CODE_RE.sub("", s)
-    s = confusables.skeleton(s)
     s = s.casefold()
-    s = SPACE_RE.sub("", s)
     s = unidecode.unidecode(s)
+    s = confusables.skeleton(s)
+    s = SPACE_RE.sub("", s)
     return s
 
 @service.model
