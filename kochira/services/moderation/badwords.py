@@ -7,7 +7,7 @@ Kick people for using bad words.
 import confusables
 import re
 import itertools
-import unicodedata
+import unidecode
 
 from peewee import CharField
 
@@ -23,14 +23,14 @@ def is_regex(what):
 
 CONTROL_CODE_RE = re.compile(
     r"\x1f|\x02|\x12|\x0f|\x16|\x03(?:\d{1,2}(?:,\d{1,2})?)?", re.UNICODE)
-SPACE_RE = re.compile(r"[^a-z0-9]", re.UNICODE | re.IGNORECASE)
+SPACE_RE = re.compile(r"(\s|\u200b)", re.UNICODE)
 
 def sanitize(s):
-    s = SPACE_RE.sub("", s)
     s = CONTROL_CODE_RE.sub("", s)
-    s = "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
     s = confusables.skeleton(s)
     s = s.casefold()
+    s = SPACE_RE.sub("", s)
+    s = unidecode.unidecode(s)
     return s
 
 @service.model
