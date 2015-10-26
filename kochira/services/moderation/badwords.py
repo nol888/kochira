@@ -136,5 +136,5 @@ def check_badwords(ctx, target, origin, message):
                                    target=ctx.target, me=ctx.client.nickname))
                 ctx.bot.event_loop.schedule(lambda: _callback(badword))
             else:
-                _callback(match.group(0))
+                _callback(badword)
             return Service.EAT
