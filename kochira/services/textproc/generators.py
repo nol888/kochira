@@ -224,7 +224,7 @@ win32 = partial(run_generator,
                     "Set",
                     "Unmarshal",
                 ]),
-                PickFrom(RandomInt(2, 4), [
+                PickFrom(RandomInt(1, 3), [
                     "Buffer",
                     "Console",
                     "Context",
