@@ -172,6 +172,98 @@ csharp = partial(run_generator,
                ])
                )
 
+win32 = partial(run_generator,
+                PickFrom(1, [
+                    "CHAR ",
+                    "DWORD ",
+                    
+                    
+                    "HRESULT ",
+                    
+                    "HANDLE ",
+                    "HWND ",
+                    "HMODULE ",
+                    "HINSTANCE ",
+                    "INT ",
+                ]),
+                PickFrom(1, [
+                    "__stdcall ",
+                    "CALLBACK ",
+                    "WINAPI ",
+                    "",
+                    "",
+                ]),
+                PickFrom(1, [
+                    "Co",
+                    "Rtl",
+                    "Nls",
+                    "NtUser",
+                    "SH",
+                    "WSA",
+                ]),
+                PickFrom(1, [
+                    "Apply",
+                    "Create",
+                    "Destroy",
+                    "Enum",
+                    "Find",
+                    "Initialize",
+                    "Is",
+                    "Get",
+                    "Handle",
+                    "Marshal",
+                    "Parse",
+                    "Post",
+                    "Query",
+                    "Receive",
+                    "Reset",
+                    "Resize",
+                    "Run",
+                    "Send",
+                    "Set",
+                    "Unmarshal",
+                ]),
+                PickFrom(RandomInt(2, 4), [
+                    "Buffer",
+                    "Console",
+                    "Context",
+                    "Error",
+                    "File",
+                    "Format",
+                    "Interface",
+                    "Item",
+                    "Language",
+                    "Locale",
+                    "Media",
+                    "Message",
+                    "Mode",
+                    "Object",
+                    "Operation",
+                    "Proc",
+                    "Security",
+                    "System",
+                    "Time",
+                    "Window",
+                ]),
+                PickFrom(1, [
+                    "Ex",
+                    "2",
+                    "",
+                    "",
+                    "",
+                ])
+                PickFrom(RandomInt(3, 5), [
+                    "HWND hWnd, ",
+                    "WPARAM wParam, ",
+                    "LPTSTR lpResult, ",
+                    "DWORD dwFlags, ",
+                    "LPVOID lpReserved, ",
+                    "PCZZSTR pLocation, ",
+                    "NULL, ",
+                    "NULL, ",
+                    "NULL, ",
+                ]),
+                
 
 bind_generator("c#", csharp,
 """
@@ -201,3 +293,9 @@ Python programmer simulator.
 Generates typical Python code.
 """)
 
+bind_generator("win32", win32,
+"""
+Win32 API user simulator.
+
+Generates typical Win32 API declarations.
+""")
