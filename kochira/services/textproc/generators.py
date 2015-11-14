@@ -256,8 +256,8 @@ win32 = partial(run_generator,
                     "",
                     "",
                     "",
-                ])
-                WrapWith(1, '({} NULL)',
+                ]),
+                WrapWith(1, '({}NULL)',
                     PickFrom(RandomInt(3, 5), [
                         "BOOL bWait, ",
                         "DWORD dwFlags, ",
@@ -280,7 +280,6 @@ win32 = partial(run_generator,
                     ]),
                 ),
                 )
-                
 
 bind_generator("c#", csharp,
 """
