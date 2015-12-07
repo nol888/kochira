@@ -14,6 +14,7 @@ service = Service(__name__, __doc__)
 @service.config
 class Config(Config):
     topic_separator = config.Field(doc="Separator to use between topic items.", default=" | ")
+    chanserv_topic = config.Field(doc="Ask ChanServ to set the topic.", default=False)
 
 
 @service.command("add (?P<topic>.+) to topic", mention=True)
@@ -39,4 +40,10 @@ def topic(ctx, topic):
     while len(ctx.config.topic_separator.join(parts).encode("utf-8")) > ctx.client._topic_length_limit:
         parts.pop()
 
-    ctx.client.set_topic(ctx.target, ctx.config.topic_separator.join(parts))
+    message = ctx.config.topic_separator.join(parts)
+
+    if not ctx.config.chanserv_topic:
+        ctx.client.set_topic(ctx.target, message)
+    else:
+        ctx.client.message("ChanServ", "TOPIC {target} {message}".format(target=ctx.target,
+                                                                         message=message))
