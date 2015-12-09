@@ -127,8 +127,8 @@ def add_correction(ctx, what, correction):
         ))
         return
 
-   if is_regex(what):
-       try:
+    if is_regex(what):
+        try:
            re2.compile(what[1:-1])
         except re2.RegexError as e:
             ctx.respond(ctx._("Sorry, that's not a valid regex: {message}").format(
