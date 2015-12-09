@@ -80,9 +80,9 @@ def make_word_regex(w):
         c_upper = c.upper()
         if c_lower != c_upper:
             # We have to be careful, because "ß".upper() == "SS".
-            buf.append(r'(?:{}|{})'.format(re.escape(c_lower), re.escape(c_upper)))
+            buf.append(r'(?:{}|{})'.format(re2.escape(c_lower), re2.escape(c_upper)))
         else:
-            buf.append(re.escape(c))
+            buf.append(re2.escape(c))
 
     return r'\b{}\b'.format(''.join(buf))
 
