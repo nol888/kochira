@@ -56,37 +56,53 @@ def remove_correction(ctx, what):
     ))
 
 
-def make_case_corrector(target):
-    def _closure(original):
-        if all(c.isupper() for c in original):
-            return target.upper()
+def match_case(original, target):
+    if original.isupper():
+        return target.upper()
 
-        if all(c.islower() for c in original):
-            return target.lower()
+    if original.islower():
+        return target.lower()
 
-        if original.title() == original:
-            return target.title()
+    if original.title() == original:
+        return target.title()
 
-        if original.capitalize() == original:
-            return target.capitalize()
+    if original.capitalize() == original:
+        return target.capitalize()
 
-        return target
-    return lambda match: _closure(match.group(0))
+    return target
+
+
+def make_word_regex(w):
+    buf = []
+
+    for c in w:
+        c_lower = c.lower()
+        c_upper = c.upper()
+        if c_lower != c_upper:
+            # We have to be careful, because "ß".upper() == "SS".
+            buf.append(r'(?:{}|{})'.format(re.escape(c_lower), re.escape(c_upper)))
+        else:
+            buf.append(re.escape(c))
+
+    return r'\b{}\b'.format(''.join(buf))
 
 
 @service.hook("channel_message")
 def do_correction(ctx, target, origin, message):
-    corrected = message
+    corrections = list(Correction.select())
 
-    for correction in Correction.select():
-        if is_regex(correction.what):
-            expr = correction.what[1:-1]
-        else:
-            expr = r"\b{}\b".format(re2.escape(correction.what))
-        expr = re2.compile(expr, re2.I)
-        corrected = expr.sub(
-            make_case_corrector("\x1f" + correction.correction + "\x1f"),
-            corrected)
+    all_exprs = '|'.join('({})'.format(correction.what[1:-1]
+                                       if is_regex(correction.what)
+                                       else make_word_regex(correction.what))
+                         for correction in corrections)
+
+    def corrector(match):
+        for i, correction in enumerate(corrections):
+            match_text = match.group(i)
+            if match_text is not None:
+                return "\x1f" + match_case(match_text, correction.correction) + "\x1f"
+
+    corrected = re2.sub(all_exprs, corrector, message)
 
     if message != corrected:
         ctx.message(ctx._("<{origin}> {corrected}").format(
@@ -110,6 +126,13 @@ def add_correction(ctx, what, correction):
             what=what if is_regex(what) else "\"" + what + "\""
         ))
         return
+
+   if is_regex(what):
+       try:
+           re2.compile(what[1:-1])
+        except re2.RegexError as e:
+            ctx.respond(ctx._("Sorry, that's not a valid regex: {message}").format(
+                e.args[0].decode('utf-8')))
 
     Correction.create(what=what, correction=correction).save()
 
