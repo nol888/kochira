@@ -99,7 +99,7 @@ def do_correction(ctx, target, origin, message):
     def corrector(match):
         for i, correction in enumerate(corrections):
             match_text = match.group(i)
-            if match_text is not None:
+            if match_text:
                 return "\x1f" + match_case(match_text, correction.correction) + "\x1f"
 
     corrected = re2.sub(all_exprs, corrector, message)
