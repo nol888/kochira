@@ -17,6 +17,26 @@ class Add(Model):
     number = IntegerField()
 
 
+DUDE_WEED_LMAO = r"""BLAZE IT
+
+                  |
+                 |.|
+                 |.|
+                |\./|
+                |\./|
+.               |\./|               .
+ \^.\          |\\.//|          /.^/
+  \--.|\       |\\.//|       /|.--/
+    \--.| \    |\\.//|    / |.--/
+     \---.|\    |\./|    /|.---/
+        \--.|\  |\./|  /|.--/
+           \ .\  |.|  /. /
+ _ -_^_^_^_-  \ \\ // /  -_^_^_^_- _
+   - -/_/_/- ^_^/| |\^_^ -\_\_\- -
+             /_ / | \ _\
+                  |
+"""
+
 @service.command("f", mention=False, allow_private=False)
 def add(ctx):
     """
@@ -34,3 +54,7 @@ def add(ctx):
     ctx.respond(ctx._("Thanks, the number of respects paid is now {number}.").format(
         number=a.number
     ))
+
+    if a.number == 420:
+        for l in DUDE_WEED_LMAO.split("\n"):
+            ctx.message("\x02\x033" + l)
