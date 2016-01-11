@@ -233,7 +233,7 @@ def rand_quote(ctx, query=None):
         ctx.respond(ctx._("Couldn't find any quotes."))
         return
 
-    quote, = random.sample(iter(q), 1)
+    quote = random.choice(list(q))
 
     ctx.respond(ctx._("Quote {id}: {text}").format(
         id=quote.id,
