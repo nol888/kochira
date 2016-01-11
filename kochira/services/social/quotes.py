@@ -229,15 +229,11 @@ def rand_quote(ctx, query=None):
     else:
         q = Quote.select()
 
-    q = q \
-        .order_by(fn.Random()) \
-        .limit(1)
-
     if not q.exists():
         ctx.respond(ctx._("Couldn't find any quotes."))
         return
 
-    quote = q[0]
+    quote, = random.sample(q, 1)
 
     ctx.respond(ctx._("Quote {id}: {text}").format(
         id=quote.id,
