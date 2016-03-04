@@ -19,10 +19,10 @@ class Config(Config):
     cx = config.Field(doc="Custom search engine ID.")
 
 
-@service.command(r"!g (?P<term>.+?)(?: (?P<num>\d+))?$")
-@service.command(r"(?:search for|google) (?P<term>.+?)(?: \((?P<num>\d+)\))?\??$", mention=True)
+@service.command(r"!g (?P<term>.+?)$")
+@service.command(r"(?:search for|google) (?P<term>.+?)\??$", mention=True)
 @background
-def search(ctx, term, num: int=None):
+def search(ctx, term):
     """
     Google.
 
@@ -44,20 +44,12 @@ def search(ctx, term, num: int=None):
     if not results:
         ctx.respond(ctx._("Couldn't find anything matching \"{term}\".").format(term=term))
         return
-
-    if num is None:
-        num = 1
-
-    num -= 1
+    
     total = len(results)
 
-    if num >= total or num < 0:
-        ctx.respond(ctx._("Couldn't find anything matching \"{term}\".").format(term=term))
-        return
-
     ctx.respond(ctx._("({num} of {total}) {title}: {url}").format(
-        title=results[num]["title"],
-        url=results[num]["link"],
-        num=num + 1,
+        title=results[0]["title"],
+        url=results[0]["link"],
+        num=1,
         total=total
     ))
