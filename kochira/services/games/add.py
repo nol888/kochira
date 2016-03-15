@@ -37,6 +37,26 @@ DUDE_WEED_LMAO = r"""BLAZE IT
                   |
 """
 
+
+SPOOKY_DEVIL = r"""SPOOKY
+
+                              /       /
+                           .'<_.-._.'<
+                          /           \      .^.
+        ._               |  -+- -+-    |    (_|_)
+     r- |\                \   /       /      // 
+   /\ \\  :                \  -=-    /       \\
+    `. \\.'           ___.__`..;._.-'---...  //
+      ``\\      __.--"        `;'     __   `-.  
+        /\\.--""      __.,              ""-.  ".
+        ;=r    __.---"   | `__    __'   / .'  .'
+        '=/\\""           \             .'  .'
+            \\             |  __ __    /   |
+             \\            |  -- --   //`'`'
+              \\           |  -- --  ' | //
+               \\          |    .      |// AsH
+"""
+
 @service.command("f", mention=False, allow_private=False)
 def add(ctx):
     """
@@ -58,3 +78,6 @@ def add(ctx):
     if a.number == 420:
         for l in DUDE_WEED_LMAO.split("\n"):
             ctx.message("\x02\x033" + l)
+    elif a.number == 666:
+        for l in SPOOKY_DEVIL.split("\n"):
+            ctx.message("\x02\x034" + l)
