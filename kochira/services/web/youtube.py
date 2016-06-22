@@ -34,7 +34,7 @@ def search(ctx, term, num: int=None):
         params={
             "key": ctx.config.api_key,
             "part": "snippet",
-            "type": "youtube#video",
+            "type": "video",
             "q": term
         }
     ).json()
