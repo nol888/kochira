@@ -77,7 +77,7 @@ def search(ctx, term, num: int=None):
         total=total
     ))
 
-@service.command(r".*(?:youtube\.com/watch.*v=|youtu\.be/)(?P<video_id>[a-zA-Z0-9_-]+).*")
+@service.command(r".*(?:youtube\.com/watch.*v=|youtu\.be/)(?P<video_id>[a-zA-Z0-9_-]+).*", priority=1)
 def lookup(ctx, video_id):
     """
     YouTube video lookup.
