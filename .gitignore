@@ -40,7 +40,9 @@ nosetests.xml
 
 # virtualenv and stuff
 quotes
-include
+include/
+local/
+share/
 
 # vim
 *.swp
