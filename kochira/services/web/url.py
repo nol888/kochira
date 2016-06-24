@@ -7,6 +7,7 @@ Fetches and displays metadata for web pages, images and more.
 import humanize
 import re
 import requests
+import requests.packages.urllib3 as urllib3
 import tempfile
 from datetime import timedelta
 from bs4 import BeautifulSoup
@@ -16,6 +17,7 @@ from kochira import config
 from kochira.service import Service, background, Config
 
 service = Service(__name__, __doc__)
+urllib3.disable_warnings()
 
 
 @service.config
