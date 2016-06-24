@@ -13,7 +13,7 @@ service = Service(__name__, __doc__)
 
 LANGUAGES = {}
 
-for language in pycountry.languages.objects:
+for language in pycountry.languages:
     for name in language.name.split(";"):
         try:
             LANGUAGES[name.strip().lower()] = language.alpha2
