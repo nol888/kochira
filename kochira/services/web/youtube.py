@@ -103,8 +103,8 @@ def lookup(ctx, video_id):
     ctx.message("\x02YouTube:\x02 {title} ({duration}, +{likes}/-{dislikes}, {views} views)".format(
         title=r["snippet"]["title"],
         duration=duration,
-        likes=r["statistics"]["likeCount"],
-        dislikes=r["statistics"]["dislikeCount"],
-        views=r["statistics"]["viewCount"]
+        likes=r["statistics"].get('likeCount', '?'),
+        dislikes=r["statistics"].get('dislikeCount', '?'),
+        views=r["statistics"].get('viewCount', '?'),
     ))
 
