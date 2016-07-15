@@ -14,8 +14,9 @@ from kochira.service import Service
 
 service = Service(__name__, __doc__)
 
+stringify = lambda x: "".join([str(y) for y in x]) if isinstance(x, list) else str(x)
 PickFrom = namedtuple("PickFrom", ["num", "list"])
-PickFrom.__str__ = lambda self: "".join(random.choice(self.list) for _ in range(int(self.num)))
+PickFrom.__str__ = lambda self: "".join(stringify(random.choice(self.list)) for _ in range(int(self.num)))
 WrapWith = namedtuple("WrapWith", ["times", "wrapper", "body"])
 WrapWith.__str__ = lambda self: str(self.wrapper).format(self.body) if int(self.times) <= 1 else str(WrapWith(int(self.times) - 1, self.wrapper, str(self.wrapper).format(self.body)))
 RandomInt = namedtuple("RandomInt", ["min", "max"])
