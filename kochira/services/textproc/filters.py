@@ -15,6 +15,22 @@ from kochira.service import Service
 service = Service(__name__, __doc__)
 
 
+BENIS_KANA_RANGES = [
+    (0x304b, 0x3061),
+    (0x3064, 0x3068),
+    (0x30ab, 0x30c1),
+    (0x30c4, 0x30c8),
+]
+
+BENIS_KANA_PATTERN = re.compile('[' + ''.join([chr(point) for codepoint_range in [
+    list(range(*(codepoint_range + (2,)))) for codepoint_range in ranges
+] for point in codepoint_range]) + ']')
+
+
+def benis_kana_replace(match):
+    return chr(ord(match.group(0)) + 1)
+
+
 def benisify(s):
     return functools.reduce(lambda acc, f: f(acc), [
         lambda s: s.lower(),
@@ -35,6 +51,7 @@ def benisify(s):
         lambda s: re.sub(r'kn', 'n', s),
         lambda s: re.sub(r'[qk]', 'g', s),
         lambda s: re.sub(r'([?!.]|$)+', lambda x: (x.group(0) * random.randint(2, 5)) + " " + "".join((":" * random.randint(1, 2)) + ("D" * random.randint(1, 4)) for _ in range(random.randint(2, 5))), s),
+        lambda s: re.sub(BENIS_KANA_PATTERN, benis_kana_replace, s),
     ], s)
 
 
