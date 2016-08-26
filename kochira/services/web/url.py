@@ -11,6 +11,7 @@ import requests.packages.urllib3 as urllib3
 import tempfile
 from datetime import timedelta
 from bs4 import BeautifulSoup
+from pymediainfo import MediaInfo
 from PIL import Image
 
 from kochira import config
@@ -77,13 +78,52 @@ def handle_image(content):
     return info
 
 
+def handle_media(content):
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(content)
+        media = MediaInfo.parse(f.name)
+
+    duration = timedelta(seconds=media.tracks[0].duration // 1000)
+    num_tracks = len(media.tracks) - 1
+    first_video_track = next((track for track in media.tracks if track.track_type == 'Video'), None)
+    first_audio_track = next((track for track in media.tracks if track.track_type == 'Audio'), None)
+
+    info = "\x02Media Info:\x02 {n} track{s}, {duration}, {size}".format(
+        size=humanize.naturalsize(media.tracks[0].file_size),
+        n=num_tracks,
+        s='s' if num_tracks != 1 else '',
+        duration=duration
+    )
+
+    if first_video_track:
+        info += "; {w} x {h} {codec}, {bitrate}bps, {framerate}fps".format(
+            codec=first_video_track.format,
+            bitrate=humanize.naturalsize(first_video_track.bit_rate, gnu=True).lower(),
+            framerate=first_video_track.frame_rate,
+            w=first_video_track.width,
+            h=first_video_track.height
+        )
+    if first_audio_track:
+        info += "; {ch}ch {codec}, {sr}kHz".format(
+            codec=first_audio_track.format,
+            ch=first_audio_track.channel_s,
+            sr=first_audio_track.sampling_rate // 100 / 10
+        )
+
+    return info
+
 HANDLERS = {
     "text/html": handle_html,
     "application/xhtml+xml": handle_html,
     "image/jpeg": handle_image,
     "image/png": handle_image,
     "image/gif": handle_image,
-    "image/webp": handle_image
+    "image/webp": handle_image,
+
+    "audio/ogg": handle_media,
+    "video/mkv": handle_media,
+    "video/mp4": handle_media,
+    "video/webm": handle_media,
 }
 
 @service.hook("channel_message")

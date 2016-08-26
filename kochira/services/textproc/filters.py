@@ -23,7 +23,7 @@ BENIS_KANA_RANGES = [
 ]
 
 BENIS_KANA_PATTERN = re.compile('[' + ''.join([chr(point) for codepoint_range in [
-    list(range(*(codepoint_range + (2,)))) for codepoint_range in ranges
+    list(range(*(codepoint_range + (2,)))) for codepoint_range in BENIS_KANA_RANGES
 ] for point in codepoint_range]) + ']')
 
 
