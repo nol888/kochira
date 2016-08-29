@@ -16,10 +16,10 @@ service = Service(__name__, __doc__)
 
 
 BENIS_KANA_RANGES = [
-    (0x304b, 0x3061),
-    (0x3064, 0x3068),
-    (0x30ab, 0x30c1),
-    (0x30c4, 0x30c8),
+    (0x304b, 0x3062),
+    (0x3064, 0x3069),
+    (0x30ab, 0x30c2),
+    (0x30c4, 0x30c9),
 ]
 
 BENIS_KANA_PATTERN = re.compile('[' + ''.join([chr(point) for codepoint_range in [
