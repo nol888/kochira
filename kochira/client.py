@@ -25,6 +25,7 @@ class Client(_Client):
         self.bot = bot
 
         self.name = name
+        self.network = name
 
     @property
     def config(self):
