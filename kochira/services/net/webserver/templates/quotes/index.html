@@ -47,7 +47,7 @@
 [].forEach.call(document.querySelectorAll("time"), function (el) {
     var datetime = el.getAttribute("datetime");
     el.title = datetime;
-    el.textContent = moment(datetime).fromNow();
+    el.textContent = moment.utc(datetime).fromNow();
 });
 </script>
 {% end %}
