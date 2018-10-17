@@ -20,11 +20,16 @@ def define(ctx, term, num: int=None):
     Look up the given term on UrbanDictionary.
     """
 
-    r = requests.get("http://api.urbandictionary.com/v0/define", params={
+    r = requests.get("https://api.urbandictionary.com/v0/define", params={
         "term": term
     }).json()
 
-    if r["result_type"] != "exact":
+    exact_matches = [
+        result for result in r["list"]
+        if result["word"].lower() == term
+    ]
+
+    if not exact_matches:
         ctx.respond(ctx._("I don't know what \"{term}\" means.").format(term=term))
         return
 
@@ -33,7 +38,7 @@ def define(ctx, term, num: int=None):
 
     # offset definition
     num -= 1
-    total = len(r["list"])
+    total = len(exact_matches)
 
     if num >= total or num < 0:
         ctx.respond(ctx._("Can't find that definition of \"{term}\".").format(term=term))
@@ -41,7 +46,7 @@ def define(ctx, term, num: int=None):
 
     ctx.respond(ctx._("{term}: {definition} ({num} of {total})").format(
         term=term,
-        definition=r["list"][num]["definition"].replace("\r", "").replace("\n", " "),
+        definition=exact_matches[num]["definition"].replace("\r", "").replace("\n", " ").replace("[", "").replace("]",""),
         num=num + 1,
         total=total
     ))
