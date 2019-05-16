@@ -48,8 +48,7 @@ BOIS_BY_FIRST_LETTER = {
 }
 
 
-@service.command(r"bigboi$", mention=True)
-@service.command(r"!bigboi$")
+@service.command(r"^.*big ?bo[iy].*$", priority=-1, eat=False)
 def bigboi(ctx):
     """
     Describe a big boi.
@@ -57,3 +56,4 @@ def bigboi(ctx):
     big = random.choice(BIGS)
     boi = random.choice(BOIS_BY_FIRST_LETTER[big[0]])
     ctx.respond(ctx._("{} {}").format(big, boi))
+
