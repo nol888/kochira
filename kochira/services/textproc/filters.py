@@ -61,6 +61,8 @@ def benisify(s):
         lambda s: s.replace('\u309a', '\u3099'),
     ], s)
 
+def Benisify(s):
+    return benisify(s).replace('b', ':b:')
 
 
 FABULOUS_COLORS = [4, 5, 8, 9, 10, 12, 13, 6]
@@ -118,6 +120,13 @@ def bind_filter(name, f, doc):
 bind_filter("benis", benisify,
 """
 Benis.
+
+You're going to have to figure this one out for yourself.
+""")
+
+bind_filter(":b:enis", Benisify,
+"""
+:b:enis.
 
 You're going to have to figure this one out for yourself.
 """)
