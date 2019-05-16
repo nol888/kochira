@@ -15,6 +15,11 @@ from kochira.userdata import UserData
 service = Service(__name__, __doc__)
 
 
+@service.config
+class Config(Config):
+    api_key = config.Field(doc="Google API key.")
+
+
 @service.command(r"!time(?: (?P<where>.+))?")
 @service.command(r"time(?: (?:for|in) (?P<where>.+))?", mention=True)
 @service.command(r"when is (?P<where>.+)\??", mention=True)
@@ -54,6 +59,7 @@ def timezone(ctx, where=None):
     resp = requests.get(
         "https://maps.googleapis.com/maps/api/timezone/json",
         params={
+            "key": ctx.config.api_key,
             "sensor": "false",
             "location": "{lat:.10},{lng:.10}".format(**location),
             "timestamp": now

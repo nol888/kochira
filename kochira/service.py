@@ -41,15 +41,18 @@ class HookContext:
 
     @property
     def config(self):
-        config = self.bot.config.services.get(self.service.name, self.service.config_factory())
+        return self.config_for(self.service)
+
+    def config_for(self, service):
+        config = self.bot.config.services.get(service.name, service.config_factory())
 
         if self.client is not None:
             client_config = self.bot.config.clients[self.client.name]
-            config = config.combine(client_config.services.get(self.service.name, self.service.config_factory()))
+            config = config.combine(client_config.services.get(service.name, service.config_factory()))
 
             if self.target is not None and self.target in client_config.channels:
                 channel_config = client_config.channels[self.target]
-                config = config.combine(channel_config.services.get(self.service.name, self.service.config_factory()))
+                config = config.combine(channel_config.services.get(service.name, service.config_factory()))
 
         return config
 

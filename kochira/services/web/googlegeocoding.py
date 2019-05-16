@@ -26,10 +26,11 @@ class GeocodingError(Exception):
     """
 
 
-def _geocode(where):
+def _geocode(key, where):
     resp = requests.get(
         "https://maps.googleapis.com/maps/api/geocode/json",
         params={
+            "key": key,
             "address": where,
             "sensor": "false"
         }
@@ -54,15 +55,16 @@ def geocode(ctx, where):
 
     user_data = yield ctx.bot.defer_from_thread(UserData.lookup_default, ctx.client, where)
     location = user_data.get("location")
+    api_key = ctx.config_for(service).api_key
 
     if where is None and location is None:
         return []
     elif location is not None:
-        result = _geocode("{lat},{lng}".format(**location))[0]
+        result = _geocode(api_key, "{lat},{lng}".format(**location))[0]
         result["formatted_address"] = location["formatted_address"]
         return [result]
     else:
-        return _geocode(where)
+        return _geocode(api_key, where)
 
 
 @service.command(r"where is (?P<where>.+)\??", mention=True)
