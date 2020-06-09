@@ -73,7 +73,11 @@ def image(ctx, term):
         }
     ).json()
 
-    results = r.get("items", [])
+    results = [
+        item
+        for item in r.get("items", [])
+        if item.get("link").startswith("http")
+    ]
 
     if not results:
         ctx.respond(ctx._("Couldn't find anything matching \"{term}\".").format(term=term))
